@@ -67,7 +67,7 @@
 // In local dev, change to 'http://localhost:3001'
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://localhost:3001'
-  : ''; // same origin when deployed on Railway
+  : 'https://soundpilot-production.up.railway.app';
 
 // ── State ──────────────────────────────────────────
 let audioFile = null;
