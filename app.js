@@ -635,6 +635,13 @@ function showResults(features, data) {
     resSections.appendChild(div);
   });
 
+  // ── Hook Test Panel ──
+  if (data.testSession) {
+    showHookTestPanel(data.testSession);
+  } else if (hookTestPanel) {
+    hookTestPanel.classList.add('hidden');
+  }
+
   // Show results
   appSection.classList.add('hidden');
   resultsSection.classList.remove('hidden');
@@ -665,6 +672,44 @@ function fmt(raw) {
     .replace(/\n{2,}/g, '\n\n');
 }
 
+// ── Hook Test Panel ───────────────────────────────
+const hookTestPanel   = document.getElementById('hookTestPanel');
+const htpLink         = document.getElementById('htpLink');
+const htpCopy         = document.getElementById('htpCopy');
+const htpCopyLabel    = document.getElementById('htpCopyLabel');
+const htpResultsLink  = document.getElementById('htpResultsLink');
+
+function showHookTestPanel(testSession) {
+  if (!testSession || !hookTestPanel) return;
+  const base = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3001'
+    : 'https://soundpilot-production.up.railway.app';
+  const testUrl    = base + testSession.testUrl;
+  const resultsUrl = base + testSession.resultsUrl;
+
+  htpLink.textContent = testUrl;
+  htpResultsLink.href = resultsUrl;
+
+  htpCopy.addEventListener('click', () => {
+    navigator.clipboard.writeText(testUrl).then(() => {
+      htpCopyLabel.textContent = 'Copied!';
+      setTimeout(() => { htpCopyLabel.textContent = 'Copy link'; }, 2000);
+    }).catch(() => {
+      // fallback
+      const el = document.createElement('textarea');
+      el.value = testUrl;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      htpCopyLabel.textContent = 'Copied!';
+      setTimeout(() => { htpCopyLabel.textContent = 'Copy link'; }, 2000);
+    });
+  });
+
+  hookTestPanel.classList.remove('hidden');
+}
+
 // ── Reset ──────────────────────────────────────────
 resetBtn.addEventListener('click', () => {
   audioFile = null; audioFeatures = null;
@@ -690,6 +735,7 @@ resetBtn.addEventListener('click', () => {
   resultsSection.classList.remove('results--animate');
   trendStrip.classList.add('hidden');
   trendStrip.classList.remove('trend-strip--open');
+  if (hookTestPanel) hookTestPanel.classList.add('hidden');
   appSection.classList.remove('hidden');
   appSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });

@@ -6,9 +6,46 @@ const rateLimit = require('express-rate-limit');
 const OpenAI    = require('openai');
 const path      = require('path');
 const https     = require('https');
+const crypto    = require('crypto');
+const Database  = require('better-sqlite3');
+const fs        = require('fs');
 
 const app  = express();
 const port = process.env.PORT || 3001;
+
+// ── Database setup ────────────────────────────────
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'soundpilot.db');
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS test_sessions (
+    id          TEXT PRIMARY KEY,
+    artist_key  TEXT NOT NULL,          -- private key for artist to view results
+    genre       TEXT NOT NULL,
+    hooks       TEXT NOT NULL,          -- JSON array of {line, window, score, reason}
+    created_at  INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL,       -- unix ms, 48h after creation
+    track_name  TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS votes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL REFERENCES test_sessions(id),
+    hook_index  INTEGER NOT NULL,       -- 0=A, 1=B, 2=C
+    voter_fp    TEXT NOT NULL,          -- hashed fingerprint (IP+UA)
+    voted_at    INTEGER NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_voter ON votes(session_id, voter_fp);
+`);
+
+// Cleanup expired sessions older than 7 days
+const cleanupStmt = db.prepare(`DELETE FROM test_sessions WHERE expires_at < ?`);
+setInterval(() => {
+  try { cleanupStmt.run(Date.now() - 7 * 24 * 60 * 60 * 1000); } catch {}
+}, 60 * 60 * 1000); // hourly
 
 // ── OpenAI client (lazy init) ─────────────────────
 let _openai = null;
@@ -45,6 +82,11 @@ const apiLimit = rateLimit({
   max: 60,
   message: { error: 'Rate limit exceeded. Try again shortly.' },
 });
+const voteLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  message: { error: 'Rate limit exceeded.' },
+});
 app.use('/api', apiLimit);
 
 // ── File upload ───────────────────────────────────
@@ -61,7 +103,6 @@ const upload = multer({
 });
 
 // ── Perplexity live trend search ──────────────────
-// Fetches real current trend data for the genre before GPT writes anything
 async function fetchLiveTrends(genre) {
   const key = process.env.PERPLEXITY_API_KEY;
   if (!key) return null;
@@ -186,7 +227,7 @@ const GENRE_PROFILES = {
     bpmRange: [95, 135],
   },
   'Dance/Electronic': {
-    platforms: 'TikTok first (18–24). YouTube Shorts second (DJ sets). Instagram Reels third.',
+    platforms: 'TikTok first (18–24). YouTube Shorts second (DJ sets). Instagram Reals third.',
     postTime: 'Friday–Saturday 9pm–midnight EST.',
     contentStyle: 'The drop is the content. 3–5 second drop clip. Festival crowd reactions. Visual transitions timed to the beat.',
     audienceNote: 'Electronic audiences also live on SoundCloud. Short-form drives platform follows.',
@@ -205,7 +246,7 @@ const GENRE_PROFILES = {
 
 // ── Health check ──────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '4.0.0' });
+  res.json({ status: 'ok', version: '5.0.0' });
 });
 
 // ── Main analysis endpoint ────────────────────────
@@ -254,19 +295,15 @@ app.post('/api/analyze', strategyLimit, upload.single('audio'), async (req, res)
         const totalDuration = w.segments[w.segments.length - 1].end || 180;
         const fmt = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 
-        // Score every segment
         const scored = w.segments.map(seg => {
           const pos = seg.start / totalDuration;
-          // Position factor: avoid intros (first 12%) and outros (last 15%)
           const posFactor = pos > 0.12 && pos < 0.82 ? 1.3 : 0.5;
           const words = (seg.text || '').trim().split(/\s+/).filter(Boolean).length;
-          // Repetition: count how many other segments share 4+ word sequences
           const segWords = (seg.text || '').toLowerCase().split(/\s+/);
           let repetitions = 0;
           for (const other of w.segments) {
             if (other === seg) continue;
             const otherWords = (other.text || '').toLowerCase().split(/\s+/);
-            // Check 4-gram overlap
             for (let i = 0; i <= segWords.length - 4; i++) {
               const ngram = segWords.slice(i, i + 4).join(' ');
               if (otherWords.join(' ').includes(ngram)) { repetitions++; break; }
@@ -276,7 +313,6 @@ app.post('/api/analyze', strategyLimit, upload.single('audio'), async (req, res)
           return { seg, rawScore, words, repetitions, pos };
         });
 
-        // Sort by score, pick top 3 that are at least 20 seconds apart
         scored.sort((a, b) => b.rawScore - a.rawScore);
         const selected = [];
         for (const item of scored) {
@@ -287,7 +323,6 @@ app.post('/api/analyze', strategyLimit, upload.single('audio'), async (req, res)
           }
         }
 
-        // Map scores to 1–10 range relative to this song
         const maxRaw = selected[0]?.rawScore || 1;
         const minRaw = selected[selected.length - 1]?.rawScore || 0;
         const range = maxRaw - minRaw || 1;
@@ -295,7 +330,6 @@ app.post('/api/analyze', strategyLimit, upload.single('audio'), async (req, res)
         hooks = selected.map((item, i) => {
           const hookStart = Math.floor(item.seg.start);
           const hookEnd   = Math.min(Math.floor(item.seg.end) + 7, Math.floor(totalDuration));
-          // Normalise to 5.0–9.5 range (honest — nothing is perfect, nothing is terrible)
           const normScore = 5.0 + ((item.rawScore - minRaw) / range) * 4.5;
           const score = parseFloat(normScore.toFixed(1));
           const reasons = [];
@@ -306,6 +340,8 @@ app.post('/api/analyze', strategyLimit, upload.single('audio'), async (req, res)
           const reason = reasons.length ? reasons.join(', ') : (i === 0 ? 'highest combined score' : 'strong candidate');
           return {
             window: `${fmt(hookStart)}–${fmt(hookEnd)}`,
+            startSec: hookStart,
+            endSec: hookEnd,
             line: item.seg.text.trim(),
             score,
             reason,
@@ -321,16 +357,12 @@ app.post('/api/analyze', strategyLimit, upload.single('audio'), async (req, res)
     const liveTrends = trendContext.status === 'fulfilled' ? trendContext.value : null;
 
     // ── Build leverage scores ─────────────────────
-    // Based on real signals — not fake random numbers
     const topHook = hooks[0];
     const hookStrength = topHook?.score || 6.0;
-    // Replay potential: based on hook repetition (chorus = high replay)
     const hasChorus = hooks.some(h => h.reason.includes('repeated'));
     const replayPotential = hookStrength >= 8 ? 'High' : hookStrength >= 6.5 ? 'Medium' : 'Low';
-    // Short-form compatibility: hooks in first 75% of song = strong
     const shortFormCompatibility = hooks.length >= 2 ? 'Strong' : hooks.length === 1 ? 'Moderate' : 'Weak';
-    // Genre trend alignment: injected from live search
-    const genreTrendAlignment = liveTrends ? 'Rising' : 'Stable'; // If we got live data, genre is active enough to search
+    const genreTrendAlignment = liveTrends ? 'Rising' : 'Stable';
     const lyricalSpecificity = transcript.length > 200 ? 'High' : transcript.length > 50 ? 'Medium' : 'Low';
 
     const leverage = {
@@ -353,16 +385,11 @@ app.post('/api/analyze', strategyLimit, upload.single('audio'), async (req, res)
       : 'No hooks identified (likely instrumental)';
 
     const trendSection = liveTrends
-      ? `LIVE TREND DATA (fetched right now for ${genre} — use this to ground your advice in what's actually happening this week):
-${liveTrends}`
+      ? `LIVE TREND DATA (fetched right now for ${genre} — use this to ground your advice in what's actually happening this week):\n${liveTrends}`
       : `NOTE: Live trend data unavailable. Use your knowledge of current ${genre} trends.`;
 
     const transcriptSection = transcript
-      ? `ACTUAL LYRICS (transcribed verbatim — quote these, do not paraphrase):
-"""
-${transcript.slice(0, 3500)}${transcript.length > 3500 ? '\n[continues...]' : ''}
-"""
-${languageNote}`
+      ? `ACTUAL LYRICS (transcribed verbatim — quote these, do not paraphrase):\n"""\n${transcript.slice(0, 3500)}${transcript.length > 3500 ? '\n[continues...]' : ''}\n"""\n${languageNote}`
       : 'INSTRUMENTAL or transcription unavailable — base strategy on genre, mood, and inspirations.';
 
     const prompt = `You are SoundPilot — a senior music strategist with deep cultural fluency across Afrobeats, Afro-R&B, Drill, Dancehall, Hip-Hop, and diaspora music culture. You give direct, specific, actionable advice grounded in real data. You work like a top A&R consultant — not a chatbot.
@@ -445,6 +472,27 @@ Be direct. Quote the lyrics. No padding.`;
       max_tokens: 2200,
     });
 
+    // ── Create a test session for Hook A/B/C voting ──
+    let testSession = null;
+    if (hooks.length >= 2) {
+      const sessionId  = crypto.randomBytes(8).toString('hex');
+      const artistKey  = crypto.randomBytes(12).toString('hex');
+      const now        = Date.now();
+      const expiresAt  = now + 48 * 60 * 60 * 1000; // 48 hours
+      const trackName  = req.file.originalname.replace(/\.[^.]+$/, '') || 'Untitled';
+
+      db.prepare(`
+        INSERT INTO test_sessions (id, artist_key, genre, hooks, created_at, expires_at, track_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(sessionId, artistKey, genre, JSON.stringify(hooks), now, expiresAt, trackName);
+
+      testSession = {
+        testUrl:    `/test/${sessionId}`,
+        resultsUrl: `/results/${sessionId}?key=${artistKey}`,
+        expiresAt,
+      };
+    }
+
     res.json({
       success: true,
       strategy: completion.choices[0].message.content,
@@ -453,6 +501,7 @@ Be direct. Quote the lyrics. No padding.`;
       trendContext: liveTrends || null,
       transcript: transcript || null,
       transcriptError,
+      testSession,
     });
 
   } catch (err) {
@@ -464,12 +513,148 @@ Be direct. Quote the lyrics. No padding.`;
   }
 });
 
-// ── Serve frontend ────────────────────────────────
+// ── GET /api/test/:id — get session data for vote page ──
+app.get('/api/test/:id', (req, res) => {
+  const session = db.prepare('SELECT * FROM test_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Test not found.' });
+  if (Date.now() > session.expires_at) return res.status(410).json({ error: 'This test link has expired.' });
+
+  // Vote counts per hook
+  const counts = db.prepare(`
+    SELECT hook_index, COUNT(*) as cnt FROM votes WHERE session_id = ? GROUP BY hook_index
+  `).all(req.params.id);
+
+  const voteCounts = {};
+  counts.forEach(r => { voteCounts[r.hook_index] = r.cnt; });
+
+  // Check if this IP already voted
+  const fp = voterFingerprint(req);
+  const voted = db.prepare('SELECT hook_index FROM votes WHERE session_id = ? AND voter_fp = ?').get(req.params.id, fp);
+
+  res.json({
+    sessionId: session.id,
+    genre: session.genre,
+    trackName: session.track_name,
+    hooks: JSON.parse(session.hooks),
+    expiresAt: session.expires_at,
+    totalVotes: counts.reduce((a, r) => a + r.cnt, 0),
+    voteCounts,
+    alreadyVoted: voted ? voted.hook_index : null,
+  });
+});
+
+// ── POST /api/test/:id/vote ──
+app.post('/api/test/:id/vote', voteLimit, (req, res) => {
+  const session = db.prepare('SELECT * FROM test_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Test not found.' });
+  if (Date.now() > session.expires_at) return res.status(410).json({ error: 'This test has expired.' });
+
+  const { hookIndex } = req.body;
+  if (hookIndex == null || hookIndex < 0 || hookIndex > 2) {
+    return res.status(400).json({ error: 'Invalid hook index.' });
+  }
+
+  const hooks = JSON.parse(session.hooks);
+  if (hookIndex >= hooks.length) return res.status(400).json({ error: 'Hook not found.' });
+
+  const fp = voterFingerprint(req);
+
+  try {
+    db.prepare(`
+      INSERT INTO votes (session_id, hook_index, voter_fp, voted_at) VALUES (?, ?, ?, ?)
+    `).run(req.params.id, hookIndex, fp, Date.now());
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) {
+      return res.status(409).json({ error: 'You already voted on this test.' });
+    }
+    throw e;
+  }
+
+  // Return updated counts
+  const counts = db.prepare(`
+    SELECT hook_index, COUNT(*) as cnt FROM votes WHERE session_id = ? GROUP BY hook_index
+  `).all(req.params.id);
+  const voteCounts = {};
+  counts.forEach(r => { voteCounts[r.hook_index] = r.cnt; });
+  const totalVotes = counts.reduce((a, r) => a + r.cnt, 0);
+
+  res.json({ success: true, voteCounts, totalVotes, yourVote: hookIndex });
+});
+
+// ── GET /api/results/:id — artist-only results ──
+app.get('/api/results/:id', (req, res) => {
+  const { key } = req.query;
+  const session = db.prepare('SELECT * FROM test_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Results not found.' });
+  if (session.artist_key !== key) return res.status(403).json({ error: 'Invalid key.' });
+
+  const counts = db.prepare(`
+    SELECT hook_index, COUNT(*) as cnt FROM votes WHERE session_id = ? GROUP BY hook_index
+  `).all(req.params.id);
+
+  const voteCounts = {};
+  counts.forEach(r => { voteCounts[r.hook_index] = r.cnt; });
+  const totalVotes = counts.reduce((a, r) => a + r.cnt, 0);
+  const hooks = JSON.parse(session.hooks);
+
+  // Find winner
+  let winnerIndex = 0;
+  let winnerVotes = 0;
+  Object.entries(voteCounts).forEach(([idx, cnt]) => {
+    if (cnt > winnerVotes) { winnerVotes = cnt; winnerIndex = parseInt(idx); }
+  });
+
+  // Build recommendation
+  let recommendation = '';
+  if (totalVotes === 0) {
+    recommendation = 'No votes yet. Share the test link with your audience.';
+  } else {
+    const pct = Math.round((winnerVotes / totalVotes) * 100);
+    const winner = hooks[winnerIndex];
+    const label = String.fromCharCode(65 + winnerIndex);
+    if (pct >= 60) {
+      recommendation = `Hook ${label} is the clear winner at ${pct}% of votes. Lead with "${winner.line}" in your promo content. This is the line your audience will replay.`;
+    } else if (pct >= 40) {
+      recommendation = `Hook ${label} edges ahead at ${pct}%. The split suggests your track has more than one viral angle — consider testing different hooks on different platforms.`;
+    } else {
+      recommendation = `Votes are split evenly across all hooks. Your track has multiple strong moments. Try Hook A on TikTok and Hook B on Instagram Reels to let each platform decide.`;
+    }
+  }
+
+  res.json({
+    sessionId: session.id,
+    genre: session.genre,
+    trackName: session.track_name,
+    hooks,
+    totalVotes,
+    voteCounts,
+    winnerIndex: totalVotes > 0 ? winnerIndex : null,
+    recommendation,
+    expiresAt: session.expires_at,
+    isExpired: Date.now() > session.expires_at,
+  });
+});
+
+// ── Voter fingerprint (privacy-preserving hash) ──
+function voterFingerprint(req) {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || 'unknown';
+  const ua = req.headers['user-agent'] || '';
+  return crypto.createHash('sha256').update(`${ip}|${ua}`).digest('hex').slice(0, 24);
+}
+
+// ── Serve SPA routes ──────────────────────────────
+// Test and results pages are served by the frontend SPA
+app.get('/test/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, '../test.html'));
+});
+app.get('/results/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, '../results.html'));
+});
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../index.html'));
 });
 
 // ── Start ─────────────────────────────────────────
 app.listen(port, '0.0.0.0', () => {
-  console.log(`SoundPilot server running on port ${port}`);
+  console.log(`SoundPilot v5.0 running on port ${port}`);
 });
