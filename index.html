@@ -1,0 +1,285 @@
+<!--
+   ______                            __
+  / ____/___  ____ ___  ____  __  __/ /____  _____
+ / /   / __ \/ __ `__ \/ __ \/ / / / __/ _ \/ ___/
+/ /___/ /_/ / / / / / / /_/ / /_/ / /_/  __/ /
+\____/\____/_/ /_/ /_/ .___/\__,_/\__/\___/_/
+                    /_/
+        Created with Perplexity Computer
+        https://www.perplexity.ai/computer
+-->
+
+<!-- Perplexity Computer Attribution — SEO Meta Tags -->
+<meta name="generator" content="Perplexity Computer">
+<meta name="author" content="Perplexity Computer">
+<meta property="og:see_also" content="https://www.perplexity.ai/computer">
+<link rel="author" href="https://www.perplexity.ai/computer">
+
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SoundPilot — AI Label for Independent Artists</title>
+  <meta name="description" content="Launch songs with data, not guesswork. SoundPilot analyzes your unreleased music and generates a viral rollout strategy powered by AI.">
+
+  <!-- Fonts: Clash Display (bold/editorial) + Satoshi (clean body) -->
+  <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@300,400,500,700&display=swap" rel="stylesheet">
+
+  <!-- Meyda for audio analysis -->
+  <script src="https://cdn.jsdelivr.net/npm/meyda@5.6.0/dist/web/meyda.min.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="#" class="logo" aria-label="SoundPilot home">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+          <circle cx="14" cy="14" r="13" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M9 14 C9 10.5 11 8.5 14 8.5 C17 8.5 19 10.5 19 14 C19 17.5 17 19.5 14 19.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M14 19.5 C12.3 19.5 11 18.2 11 16.5 C11 14.8 12.3 13.5 14 13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="14" cy="14" r="2" fill="currentColor"/>
+        </svg>
+        <span class="logo-text">SoundPilot</span>
+      </a>
+      <div class="nav-right">
+        <span class="nav-badge">Beta</span>
+        <button class="theme-toggle" data-theme-toggle aria-label="Switch theme">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-eyebrow">
+        <span class="dot"></span>
+        <span>AI Label Infrastructure</span>
+      </div>
+      <h1 class="hero-title">Launch songs with<br><em>data, not guesswork.</em></h1>
+      <p class="hero-sub">Upload an unreleased snippet. SoundPilot analyzes the music, finds your sound's fingerprint, and generates a full viral rollout strategy — like having a label's marketing team in your pocket.</p>
+    </div>
+  </section>
+
+  <!-- UPLOAD CARD -->
+  <section class="upload-section">
+    <div class="upload-card" id="uploadCard">
+
+      <!-- Step 1: Upload -->
+      <div class="step" id="step1">
+        <div class="step-header">
+          <span class="step-num">01</span>
+          <span class="step-label">Drop your unreleased track</span>
+        </div>
+
+        <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Upload audio file">
+          <div class="dropzone-icon">
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M18 24V12M12 18l6-6 6 6"/>
+              <rect x="4" y="28" width="28" height="0" stroke="none"/>
+              <path d="M6 28h24" stroke-linecap="round"/>
+              <path d="M30 22v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4"/>
+            </svg>
+          </div>
+          <p class="dropzone-main">Drag & drop your snippet here</p>
+          <p class="dropzone-sub">or click to browse — MP3, WAV, M4A (10–60 sec)</p>
+          <input type="file" id="audioInput" accept="audio/*" class="sr-only" aria-label="Choose audio file">
+        </div>
+
+        <div class="file-preview hidden" id="filePreview">
+          <div class="file-info">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span id="fileName">track.mp3</span>
+          </div>
+          <button class="remove-file" id="removeFile" aria-label="Remove file">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <!-- Waveform visualizer -->
+        <canvas id="waveformCanvas" class="waveform hidden" width="600" height="60" aria-hidden="true"></canvas>
+      </div>
+
+      <!-- Step 2: Genre + Inspirations -->
+      <div class="step step-row" id="step2">
+        <div class="field">
+          <label class="field-label" for="genreSelect">
+            <span class="step-num">02</span>
+            Genre
+          </label>
+          <div class="select-wrap">
+            <select id="genreSelect" class="select-input">
+              <option value="">Select genre</option>
+              <option value="Afrobeats">Afrobeats</option>
+              <option value="Afro-R&B">Afro-R&B</option>
+              <option value="Amapiano">Amapiano</option>
+              <option value="R&B / Soul">R&B / Soul</option>
+              <option value="Hip-Hop / Rap">Hip-Hop / Rap</option>
+              <option value="Drill">Drill</option>
+              <option value="Dancehall">Dancehall</option>
+              <option value="Pop">Pop</option>
+              <option value="Electronic / Dance">Electronic / Dance</option>
+              <option value="Alternative / Indie">Alternative / Indie</option>
+            </select>
+            <svg class="select-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="inspirationsInput">
+            <span class="step-num">03</span>
+            Artist inspirations <span class="optional">(optional)</span>
+          </label>
+          <input type="text" id="inspirationsInput" class="text-input" placeholder="e.g. Odeal, Gabzy, Tems">
+        </div>
+      </div>
+
+      <!-- OpenAI Key -->
+      <div class="step" id="stepKey">
+        <div class="step-header">
+          <span class="step-num">04</span>
+          <span class="step-label">OpenAI API Key <span class="optional">(used only in your browser)</span></span>
+        </div>
+        <div class="api-key-wrap">
+          <input type="password" id="apiKeyInput" class="text-input" placeholder="sk-..." autocomplete="off" spellcheck="false">
+          <button class="key-toggle" id="keyToggle" aria-label="Show/hide API key" type="button">
+            <svg id="eyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <p class="key-note">Your key is never stored or sent to our servers — it calls OpenAI directly from your browser.</p>
+      </div>
+
+      <!-- Generate button -->
+      <button class="generate-btn" id="generateBtn" disabled>
+        <span class="generate-label" id="generateLabel">Generate Strategy</span>
+        <svg class="generate-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+
+      <!-- Progress state -->
+      <div class="progress-wrap hidden" id="progressWrap">
+        <div class="progress-steps">
+          <div class="progress-step" id="ps1">
+            <div class="ps-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19V6l12-3v13"/><circle cx="6" cy="19" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            </div>
+            <span>Analyzing audio features</span>
+          </div>
+          <div class="progress-step" id="ps2">
+            <div class="ps-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            </div>
+            <span>Matching comparable artists</span>
+          </div>
+          <div class="progress-step" id="ps3">
+            <div class="ps-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </div>
+            <span>Generating viral strategy</span>
+          </div>
+          <div class="progress-step" id="ps4">
+            <div class="ps-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+            <span>Building release plan</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="results-section hidden" id="resultsSection">
+    <div class="results-header">
+      <div class="results-title-row">
+        <h2 class="results-title">Your Strategy</h2>
+        <button class="new-analysis-btn" id="newAnalysisBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          New analysis
+        </button>
+      </div>
+    </div>
+
+    <!-- Audio profile -->
+    <div class="result-cards" id="audioProfileCard">
+      <div class="result-card" id="audioCard">
+        <div class="card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          Song Profile
+        </div>
+        <div class="audio-metrics" id="audioMetrics">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Output -->
+    <div class="ai-output" id="aiOutput">
+      <!-- sections populated by JS -->
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how-section">
+    <div class="how-inner">
+      <h2 class="section-title">How SoundPilot works</h2>
+      <div class="how-grid">
+        <div class="how-item">
+          <div class="how-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
+          <h3>Audio Intelligence</h3>
+          <p>Meyda extracts real acoustic features — tempo, energy, spectral brightness — directly in your browser. No upload to any server.</p>
+        </div>
+        <div class="how-item">
+          <div class="how-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </div>
+          <h3>Artist Matching</h3>
+          <p>GPT-4 compares your song's DNA against thousands of artists to find those who share your sound's fingerprint and vibe.</p>
+        </div>
+        <div class="how-item">
+          <div class="how-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </div>
+          <h3>Viral Strategy</h3>
+          <p>A data-driven content playbook — what to post, when, which part of the song to use as the hook, and how to build momentum.</p>
+        </div>
+        <div class="how-item">
+          <div class="how-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <h3>Release Rollout</h3>
+          <p>A week-by-week release calendar that builds hype before drop day — influencer timing, platform sequencing, and campaign milestones.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-logo">
+        <svg width="20" height="20" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+          <circle cx="14" cy="14" r="13" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M9 14 C9 10.5 11 8.5 14 8.5 C17 8.5 19 10.5 19 14 C19 17.5 17 19.5 14 19.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M14 19.5 C12.3 19.5 11 18.2 11 16.5 C11 14.8 12.3 13.5 14 13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="14" cy="14" r="2" fill="currentColor"/>
+        </svg>
+        <span>SoundPilot</span>
+      </div>
+      <p class="footer-tagline">AI label infrastructure for independent artists.</p>
+      <p class="footer-credit">
+        <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a>
+      </p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
