@@ -9,8 +9,15 @@ const path       = require('path');
 const app  = express();
 const port = process.env.PORT || 3001;
 
-// ── OpenAI client ──────────────────────────────────
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// ── OpenAI client (lazy — so missing key doesn't crash on boot) ──
+let _openai = null;
+function getOpenAI() {
+  if (!_openai) {
+    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY env var is not set on the server.');
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return _openai;
+}
 
 // ── CORS — allow all origins (manual headers + cors package) ───
 // Manual headers first — belt-and-suspenders approach
@@ -137,7 +144,7 @@ Format as Day 1, Day 4, Day 7, Day 10, Day 14. Bold title per day + 1–2 specif
 
 Keep it tight, expert, and actionable.`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.75,
