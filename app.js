@@ -72,6 +72,9 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
 // ── State ──────────────────────────────────────────
 let audioFile = null;
 let audioFeatures = null;
+let selectedHook = null;
+let lastBackendData = null;
+let lastFeatures = null;
 
 // ── DOM ────────────────────────────────────────────
 const dropzone  = document.getElementById('dropzone');
@@ -94,6 +97,13 @@ const resSections = document.getElementById('resSections');
 const scMetrics  = document.getElementById('scMetrics');
 const resetBtn   = document.getElementById('resetBtn');
 const appSection = document.getElementById('app');
+const hookSelectorSection = document.getElementById('hookSelectorSection');
+const hookCards   = document.getElementById('hookCards');
+const leverageGrid = document.getElementById('leverageGrid');
+const trendStrip  = document.getElementById('trendStrip');
+const trendToggle = document.getElementById('trendToggle');
+const trendLabel  = document.getElementById('trendLabel');
+const trendBody   = document.getElementById('trendBody');
 
 // ── Upload ─────────────────────────────────────────
 dropzone.addEventListener('click', () => audioInput.click());
@@ -361,7 +371,19 @@ genBtn.addEventListener('click', async () => {
     await step('p4', 400);
 
     progWrap.classList.add('hidden');
-    showResults(features, data);
+
+    // Store for later use after hook selection
+    lastBackendData = data;
+    lastFeatures = features;
+
+    // If hooks are present, show hook selector first
+    if (data.hooks && data.hooks.length > 0) {
+      showHookSelector(data.hooks, features, data);
+    } else {
+      // No hooks — skip selector, go straight to results
+      selectedHook = null;
+      showResults(features, data);
+    }
   } catch (err) {
     progWrap.classList.add('hidden');
     resetGenBtn();
@@ -430,15 +452,123 @@ async function callBackend(genre, mood, inspirations, features) {
   return data;
 }
 
+// ── Trend context toggle ──────────────────────────
+trendToggle && trendToggle.addEventListener('click', () => {
+  const isOpen = trendStrip.classList.toggle('trend-strip--open');
+  trendBody.classList.toggle('hidden', !isOpen);
+});
+
+// ── Hook selector ─────────────────────────────────
+function showHookSelector(hooks, features, data) {
+  hookCards.innerHTML = '';
+
+  hooks.forEach((hook, i) => {
+    const card = document.createElement('div');
+    card.className = 'hook-card';
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.innerHTML = `
+      <span class="hook-card-window">${hook.window || '—'}</span>
+      <p class="hook-card-line">"${hook.line || '—'}"</p>
+      <div class="hook-card-footer">
+        <span class="hook-card-score">${hook.score != null ? hook.score.toFixed(1) : '—'}</span>
+        <span class="hook-card-label">Hook ${String.fromCharCode(65 + i)}</span>
+      </div>
+    `;
+
+    card.addEventListener('click', () => {
+      // Deselect all
+      hookCards.querySelectorAll('.hook-card').forEach(c => c.classList.remove('hook-card--selected'));
+      // Select this one
+      card.classList.add('hook-card--selected');
+      selectedHook = hook;
+
+      // Show full results below
+      showResults(features, data);
+      resultsSection.classList.add('results--animate');
+      resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); card.click(); }
+    });
+
+    hookCards.appendChild(card);
+  });
+
+  // Show selector, hide app form
+  appSection.classList.add('hidden');
+  resultsSection.classList.add('hidden');
+  hookSelectorSection.classList.remove('hidden');
+  hookSelectorSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // ── Render results ─────────────────────────────────
 function showResults(features, data) {
   // data is the full backend response object
   const text       = data.strategy || data; // fallback if old format
-  const hookWindow = data.hookWindow || (features.hookStart ? `${features.hookStart}–${features.hookEnd}` : '—');
-  const hookLine   = data.hookLine   || null;
+  const hook       = selectedHook;
+  const hookWindow = hook ? hook.window : (data.hookWindow || (features.hookStart ? `${features.hookStart}–${features.hookEnd}` : '—'));
+  const hookLine   = hook ? hook.line : (data.hookLine || null);
   const transcript = data.transcript || null;
+  const leverage   = data.leverage || null;
+  const trendCtx   = data.trendContext || null;
 
-  // HookFinder metrics — real data only, no fake scores
+  // ── Leverage Score Panel ──
+  if (leverage) {
+    const dotColor = (val) => {
+      const v = (val || '').toLowerCase();
+      if (v === 'high' || v === 'strong' || v === 'rising') return 'green';
+      if (v === 'medium' || v === 'moderate' || v === 'stable') return 'yellow';
+      return 'red';
+    };
+
+    leverageGrid.innerHTML = `
+      <div class="leverage-metric">
+        <span class="leverage-metric-label">Hook Strength</span>
+        <span class="leverage-metric-value">${leverage.hookStrength != null ? leverage.hookStrength : '—'}<span style="font-size:var(--text-xs);color:var(--t3);margin-left:2px">/ 10</span></span>
+      </div>
+      <div class="leverage-metric">
+        <span class="leverage-metric-label">Replay Potential</span>
+        <span class="leverage-metric-value"><span class="leverage-dot leverage-dot--${dotColor(leverage.replayPotential)}"></span>${leverage.replayPotential || '—'}</span>
+      </div>
+      <div class="leverage-metric">
+        <span class="leverage-metric-label">Short-form Compatibility</span>
+        <span class="leverage-metric-value">${leverage.shortFormCompatibility || '—'}</span>
+      </div>
+      <div class="leverage-metric">
+        <span class="leverage-metric-label">Genre Trend Alignment</span>
+        <span class="leverage-metric-value"><span class="leverage-dot leverage-dot--${dotColor(leverage.genreTrendAlignment)}"></span>${leverage.genreTrendAlignment || '—'}</span>
+      </div>
+      <div class="leverage-metric">
+        <span class="leverage-metric-label">Lyrical Specificity</span>
+        <span class="leverage-metric-value">${leverage.lyricalSpecificity || '—'}</span>
+      </div>
+      <div class="leverage-metric">
+        <span class="leverage-metric-label">Detected Language</span>
+        <span class="leverage-metric-value"><span class="leverage-badge">${leverage.detectedLanguage || '—'}</span></span>
+      </div>
+    `;
+    document.getElementById('leveragePanel').classList.remove('hidden');
+  } else {
+    document.getElementById('leveragePanel').classList.add('hidden');
+  }
+
+  // ── Live Trend Context Strip ──
+  if (trendCtx) {
+    const genre = genreEl.value || 'Music';
+    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    trendLabel.textContent = `Live trend context — ${genre} · ${today}`;
+    trendBody.textContent = trendCtx;
+    trendStrip.classList.remove('hidden');
+    // Reset to collapsed state
+    trendStrip.classList.remove('trend-strip--open');
+    trendBody.classList.add('hidden');
+  } else {
+    trendStrip.classList.add('hidden');
+  }
+
+  // ── HookFinder metrics ──
   hfrMetrics.innerHTML = `
     <div class="hfr-metric">
       <span class="hfm-val accent">${hookWindow}</span>
@@ -467,14 +597,22 @@ function showResults(features, data) {
     </div>`}
   `;
 
-  // Share card — show hook line instead of fake scores
+  // ── Share card ──
+  const scHookLine = hook ? hook.line : hookLine;
+  const scHookStrength = leverage ? leverage.hookStrength : null;
+  const scShortForm = leverage ? leverage.shortFormCompatibility : null;
+  const scTrend = leverage ? leverage.genreTrendAlignment : null;
+
   scMetrics.innerHTML = `
+    ${scHookStrength != null ? `<div class="sc-m"><span class="sc-v">${scHookStrength}</span><span class="sc-k">Hook Strength</span></div>` : ''}
+    ${scShortForm ? `<div class="sc-m"><span class="sc-v">${scShortForm}</span><span class="sc-k">Short-form</span></div>` : ''}
+    ${scTrend ? `<div class="sc-m"><span class="sc-v">${scTrend}</span><span class="sc-k">Trend</span></div>` : ''}
+    ${scHookLine ? `<div class="sc-m sc-m--wide"><span class="sc-v sc-v--sm">"${scHookLine.length > 40 ? scHookLine.slice(0,37)+'…' : scHookLine}"</span><span class="sc-k">Chosen Hook</span></div>` : `
     <div class="sc-m"><span class="sc-v">${hookWindow}</span><span class="sc-k">Hook Window</span></div>
-    ${hookLine ? `<div class="sc-m sc-m--wide"><span class="sc-v sc-v--sm">"${hookLine.length > 40 ? hookLine.slice(0,37)+'…' : hookLine}"</span><span class="sc-k">Hook Line</span></div>` : ''}
-    <div class="sc-m"><span class="sc-v">${features.energy || '—'}</span><span class="sc-k">Energy</span></div>
+    <div class="sc-m"><span class="sc-v">${features.energy || '—'}</span><span class="sc-k">Energy</span></div>`}
   `;
 
-  // Parse AI sections
+  // ── Parse AI sections ──
   resSections.innerHTML = '';
   const sections = parseSections(text);
   const icons = [
@@ -530,6 +668,7 @@ function fmt(raw) {
 // ── Reset ──────────────────────────────────────────
 resetBtn.addEventListener('click', () => {
   audioFile = null; audioFeatures = null;
+  selectedHook = null; lastBackendData = null; lastFeatures = null;
   fileRow.classList.add('hidden');
   dropzone.classList.remove('hidden');
   waveCanvas.classList.add('hidden');
@@ -546,7 +685,11 @@ resetBtn.addEventListener('click', () => {
     const el = document.getElementById(id);
     if (el) { el.classList.remove('active','done'); }
   });
+  hookSelectorSection.classList.add('hidden');
   resultsSection.classList.add('hidden');
+  resultsSection.classList.remove('results--animate');
+  trendStrip.classList.add('hidden');
+  trendStrip.classList.remove('trend-strip--open');
   appSection.classList.remove('hidden');
   appSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });

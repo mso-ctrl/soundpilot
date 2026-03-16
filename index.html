@@ -351,6 +351,16 @@
     </div>
   </section>
 
+  <!-- HOOK SELECTOR (shown after analysis, before full results) -->
+  <section class="hook-selector hidden" id="hookSelectorSection">
+    <div class="section-inner">
+      <p class="section-label">Choose your hook</p>
+      <h2 class="section-title">Which moment hits hardest?</h2>
+      <p class="hook-selector-sub">Select the hook you want your strategy built around.</p>
+      <div class="hook-cards" id="hookCards"></div>
+    </div>
+  </section>
+
   <!-- RESULTS -->
   <section class="results hidden" id="resultsSection">
     <div class="section-inner">
@@ -360,6 +370,26 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
           New analysis
         </button>
+      </div>
+
+      <!-- Leverage Score Panel -->
+      <div class="leverage-panel" id="leveragePanel">
+        <div class="leverage-header">
+          <span class="leverage-label">Artist Leverage Score</span>
+        </div>
+        <div class="leverage-grid" id="leverageGrid"></div>
+      </div>
+
+      <!-- Live Trend Context Strip -->
+      <div class="trend-strip hidden" id="trendStrip">
+        <button class="trend-toggle" id="trendToggle">
+          <div class="trend-toggle-left">
+            <span class="trend-strip-label" id="trendLabel">Live trend context</span>
+            <span class="trend-live-badge">✦ Live</span>
+          </div>
+          <svg class="trend-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="trend-body hidden" id="trendBody"></div>
       </div>
 
       <!-- Hook result -->

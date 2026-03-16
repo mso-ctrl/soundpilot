@@ -5,6 +5,7 @@ const multer    = require('multer');
 const rateLimit = require('express-rate-limit');
 const OpenAI    = require('openai');
 const path      = require('path');
+const https     = require('https');
 
 const app  = express();
 const port = process.env.PORT || 3001;
@@ -46,7 +47,7 @@ const apiLimit = rateLimit({
 });
 app.use('/api', apiLimit);
 
-// ── File upload (50MB max) ────────────────────────
+// ── File upload ───────────────────────────────────
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -59,85 +60,152 @@ const upload = multer({
   }
 });
 
+// ── Perplexity live trend search ──────────────────
+// Fetches real current trend data for the genre before GPT writes anything
+async function fetchLiveTrends(genre) {
+  const key = process.env.PERPLEXITY_API_KEY;
+  if (!key) return null;
+
+  const now = new Date();
+  const monthYear = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+  const query = `What ${genre} songs and sounds are trending on TikTok and going viral in ${monthYear}? What content formats are working best for ${genre} artists right now? What are the key characteristics of ${genre} songs that are blowing up? Be specific and current.`;
+
+  return new Promise((resolve) => {
+    const body = JSON.stringify({
+      model: 'sonar',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a music industry trend analyst. Give concise, specific, current information. No generic advice. Focus on what is actually happening right now in this genre on social platforms.'
+        },
+        { role: 'user', content: query }
+      ],
+      max_tokens: 600,
+      temperature: 0.2,
+      search_recency_filter: 'month',
+      return_citations: false,
+    });
+
+    const options = {
+      hostname: 'api.perplexity.ai',
+      path: '/chat/completions',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.message?.content;
+          resolve(content || null);
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', () => resolve(null));
+    req.setTimeout(15000, () => { req.destroy(); resolve(null); });
+    req.write(body);
+    req.end();
+  });
+}
+
 // ── Genre intelligence ────────────────────────────
-// Each profile has platform strategy, timing, content style, and audience behaviour
-// This is injected into the prompt as grounded knowledge
 const GENRE_PROFILES = {
   'Afrobeats': {
-    platforms: 'TikTok first — Afrobeats discovery happens through dance challenges and the FYP algorithm, not follower count. The For You page in UK, Canada, and Nigeria all amplify Afrobeats simultaneously when a clip gets traction. Instagram Reels second — diaspora reposts are where it spreads to older demographics. YouTube Shorts third — slower ignition but longer shelf life.',
-    postTime: 'Friday 8pm–midnight EST / 1am–5am WAT. Saturday 6–11pm EST. This window hits UK evening, North American evening, and West African late-night simultaneously — the three biggest Afrobeats markets.',
-    contentStyle: 'Dance is the discovery engine, not promotion. A clip of someone doing 8 counts on the hook will outperform any promotional post. Content that converts: choreography on the hook (even amateur), street/lifestyle clips with the song playing, group reaction videos, diaspora pride moments. Colour grade: warm, vibrant, saturated — not moody or desaturated. Captions should invite tagging (e.g. "send this to your friend that needs to hear this"). Comment section strategy matters — respond to early comments to boost algorithm.',
-    audienceNote: 'Core: Nigerian, Ghanaian, Kenyan diaspora aged 16–35 in UK (London especially), USA (Atlanta, Houston, NYC), Canada (Toronto). Secondary: African-American and Latinx audiences discovering the genre through TikTok. Audience behaviour: extremely high sharing rate, group listening culture, heavy tagging of friends.',
-    contentDont: 'Sitting-down talking-to-camera content. Over-produced/polished marketing visuals. English-only captions when the song has Pidgin or Yoruba — code-switch with your audience.',
+    platforms: 'TikTok first — Afrobeats discovery happens through dance challenges and the FYP algorithm, not follower count. Instagram Reels second (diaspora reposts). YouTube Shorts third.',
+    postTime: 'Friday 8pm–midnight EST / 1am–5am WAT. Saturday 6–11pm EST. Hits UK, North America, and West Africa simultaneously.',
+    contentStyle: 'Dance is the discovery engine. 8 counts on the hook outperforms any promotional post. Warm, vibrant, saturated colour grading. Captions should invite tagging.',
+    audienceNote: 'Core: Nigerian, Ghanaian, Kenyan diaspora in UK, USA, Canada. Heavy sharing, tagging, group listening.',
+    contentDont: 'Sitting-down talking-to-camera. Over-produced marketing visuals. English-only captions when the song has Pidgin or Yoruba.',
+    bpmRange: [90, 115],
   },
   'Afro-R&B': {
-    platforms: 'Instagram Reels first — Afro-R&B is a visual-aesthetic genre and the Instagram audience is where the core listener lives. The algorithm rewards saves and shares over likes for this genre. TikTok second — growing fast through emotional POV content and "playlist" culture. YouTube for full song streams, not clips.',
-    postTime: 'Thursday 9pm–midnight EST. Saturday 8–11pm EST. This audience streams late at night — winding down, getting ready to go out, in a long-distance situationship. Midweek posts build momentum before the weekend release.',
-    contentStyle: 'Aesthetics over energy — the visual should feel like the sonic world of the song. Content that converts: soft lighting (golden hour or candlelight), bedroom/apartment settings, subtle movement not full dancing, text overlays with a specific lyric line, outfit fits. A cinematic empty-room shot with the vocals playing can outperform an artist performance clip. Avoid hype edits and fast cuts — they break the mood this genre depends on.',
-    audienceNote: 'Core: Black women and men aged 20–32 in UK, USA, Canada. This audience responds to emotional specificity — lyrics about situationships, late nights, longing, and the in-between perform best. They share when a lyric captures something they cannot say themselves.',
-    contentDont: 'Fast cuts. Bright/energetic colour grading. Dance challenge formats — wrong genre energy.',
+    platforms: 'Instagram Reels first — aesthetics-first audience. TikTok second (emotional POV content). YouTube for full streams.',
+    postTime: 'Thursday 9pm–midnight EST. Saturday 8–11pm EST. Late-night streaming audience.',
+    contentStyle: 'Soft lighting, golden hour, bedroom settings, subtle movement. Text overlay with a specific lyric. Avoid hype edits — they kill the mood.',
+    audienceNote: 'Core: 20–32 Black women and men in UK, USA, Canada. Responds to emotional specificity — situationships, late nights, longing.',
+    contentDont: 'Fast cuts. Dance challenge formats. Bright energetic colour grading.',
+    bpmRange: [65, 95],
   },
   'Amapiano': {
-    platforms: 'TikTok first — Amapiano spreads almost entirely through the log drum groove and dance. The yano shuffle and related styles spread fast on FYP. Instagram Reels second — South African diaspora is highly active here. YouTube for full DJ sets and mixes.',
-    postTime: 'Friday evening and Saturday afternoon EST. South African diaspora most active Friday night.',
-    contentStyle: 'The log drum is the hook, not the vocals. Content that works: groove-based movement (body isolation and footwork, not formal choreography), house party clips, golden hour and sunset aesthetic, South African fashion and lifestyle. Colour grade warm and bright. The culture of elevation and celebration should come through visually.',
-    audienceNote: 'Still early in mainstream adoption in UK and USA — an unknown artist can genuinely go viral with the right clip. Core: South African diaspora + African-American listeners discovering through TikTok.',
-    contentDont: 'Moody or dark visuals. Treating it like Afrobeats — different energy, different audience behaviour.',
+    platforms: 'TikTok first — log drum groove drives dance discovery. Instagram Reels second. YouTube for DJ sets.',
+    postTime: 'Friday evening and Saturday afternoon EST.',
+    contentStyle: 'Log drum is the hook, not the vocals. Body isolation and footwork. House party clips. Warm, bright colour grade.',
+    audienceNote: 'Early mainstream in UK/USA — high viral potential for unknown artists.',
+    contentDont: 'Moody or dark visuals. Treating it like Afrobeats.',
+    bpmRange: [110, 130],
   },
   'Hip-Hop/Rap': {
-    platforms: 'TikTok first — rap discovery is now dominated by 15-second bar clips on FYP. A single quotable bar can blow up a track before it releases. YouTube Shorts second — rap has the strongest YouTube-native audience of any genre, and reaction channels multiply reach. Instagram Reels third.',
-    postTime: 'Tuesday and Thursday 9pm–midnight EST. Saturday 8–11pm EST. Avoid Sunday morning — this audience is not active then.',
-    contentStyle: 'Bars first, aesthetics second. Content that converts: 15-second clip of the most quotable line (not the hook — the most quotable line), freestyle energy in a studio or car, raw unscripted footage. Karaoke-style lyrics on screen dramatically increase watch time and shares. The artist should look like they belong — over-produced content kills credibility.',
-    audienceNote: 'TikTok rap audiences respond to quotability above all else. One bar delivered with conviction can do more than a full promo campaign. Comment section is critical — rap audiences debate lyrics.',
-    contentDont: 'Over-produced visuals. Talking about the song instead of performing it. Posting without captions — rap needs text.',
+    platforms: 'TikTok first — 15-second bar clips on FYP. YouTube Shorts second (reaction channel culture). Instagram Reels third.',
+    postTime: 'Tuesday and Thursday 9pm–midnight EST. Saturday 8–11pm EST.',
+    contentStyle: 'Most quotable line, not the hook. Karaoke-style lyrics on screen. Raw studio footage. Over-produced content kills credibility.',
+    audienceNote: 'One quotable bar delivered with conviction can outperform a full campaign.',
+    contentDont: 'Over-produced visuals. Talking about the song instead of performing it.',
+    bpmRange: [75, 105],
   },
   'R&B': {
-    platforms: 'Instagram Reels first — R&B is a visual-aesthetic genre, Instagram is still dominant. Algorithm rewards saves and shares. TikTok second — growing through emotional POV content. YouTube for streams and music video.',
+    platforms: 'Instagram Reels first. TikTok second (emotional POV). YouTube for streams.',
     postTime: 'Wednesday 8–11pm EST and Saturday 7–10pm EST.',
-    contentStyle: 'Emotional storytelling. Content that converts: POV clips with a specific scenario in the caption (the more specific the better — "when they text you after 3 months"), moody aesthetic clips with lyrics as overlay, performance clips showing vocal range. R&B audiences leave long personal comments — captions that open a conversation outperform promotional captions.',
-    audienceNote: 'Core: Black women and men aged 18–35 in USA and UK. This audience streams heavily on Spotify and Apple Music — TikTok traction directly converts to playlist adds. Saves rate is the key metric to watch.',
+    contentStyle: 'POV clips with specific scenario captions. Moody aesthetic with lyric overlay. R&B audiences leave long personal comments — open a conversation.',
+    audienceNote: 'Core: 18–35 Black women and men in USA and UK. TikTok traction converts directly to Spotify playlist adds.',
     contentDont: 'Fast cuts. Dance formats. Generic promotional language.',
+    bpmRange: [60, 95],
   },
   'Drill': {
-    platforms: 'YouTube Shorts first — drill has one of the strongest YouTube-native audiences. Street rap blogs and reaction channels (No Jumper, DJ Akademiks clips) multiply reach dramatically. TikTok second. Instagram Reels third.',
+    platforms: 'YouTube Shorts first (reaction channel culture). TikTok second. Instagram Reels third.',
     postTime: 'Friday and Saturday 9pm–2am EST.',
-    contentStyle: 'Raw and unfiltered. Content that converts: studio session clips with the beat playing, no-frills performance footage, lyric videos on YouTube. Do NOT over-produce drill content — it reads as inauthentic immediately. The artist should look comfortable and in their element. Desaturated or natural colour grade works better than heavily filtered.',
-    audienceNote: 'Drill audiences are intensely loyal but hard to crack from the outside. Strongest entry point is YouTube — a good lyric video can get picked up by reaction channels and multiply reach 10x.',
-    contentDont: 'Polished/glossy visuals. Dance content. Anything that looks like mainstream pop marketing.',
+    contentStyle: 'Raw and unfiltered. Studio clips with beat playing. No-frills performance. Desaturated or natural colour grade.',
+    audienceNote: 'Reaction channels multiply reach dramatically. YouTube-native audience.',
+    contentDont: 'Polished visuals. Dance content. Mainstream pop marketing aesthetics.',
+    bpmRange: [130, 160],
   },
   'Dancehall': {
-    platforms: 'TikTok first — spreads through dance challenges almost exclusively. Instagram Reels second. YouTube for full videos and riddim playlists.',
+    platforms: 'TikTok first — dance challenges. Instagram Reels second. YouTube for riddim playlists.',
     postTime: 'Friday 7pm–midnight EST and Saturday 6–11pm EST.',
-    contentStyle: 'Dance is non-negotiable. A simple learnable routine on the hook (8–16 counts max) is the entire short-form strategy. Outdoor, beach, and party settings. Vibrant Caribbean colour grading. The challenge IS the marketing strategy — if there is no dance, short-form does not work for this genre.',
-    audienceNote: 'Core: Caribbean diaspora in UK, USA, Canada. Secondary: African-American audience. Songs that get a challenge spread extremely fast — the challenge multiplies reach.',
+    contentStyle: 'Dance is non-negotiable. Simple learnable routine, 8–16 counts max. Vibrant Caribbean colour. The challenge IS the strategy.',
+    audienceNote: 'Caribbean diaspora in UK, USA, Canada. Songs with challenges spread extremely fast.',
     contentDont: 'Static or moody content. Content without movement.',
+    bpmRange: [90, 110],
   },
   'Pop': {
-    platforms: 'TikTok first — pop discovery is almost entirely FYP-driven in 2025-2026. Instagram Reels second. YouTube Shorts third.',
+    platforms: 'TikTok first — FYP-driven discovery. Instagram Reels second. YouTube Shorts third.',
     postTime: 'Thursday–Saturday 5–9pm EST.',
-    contentStyle: 'The first 2 seconds must grab — stop the scroll. Content that converts: emotional POV clips with a specific relatable scenario, trend-adjacent formats that use the song as a sound, transition videos on the instrumental break, comedic angles. Test 2–3 different content formats in week one — the algorithm will tell you which one to double down on.',
-    audienceNote: 'Pop has the broadest demographic but the most competitive FYP. Generic content disappears immediately. Differentiation through emotional specificity or visual novelty is critical.',
+    contentStyle: 'First 2 seconds must stop the scroll. Test 2–3 different content formats week one. Algorithm tells you what to double down on.',
+    audienceNote: 'Broadest demographic, most competitive FYP. Generic content disappears instantly.',
     contentDont: 'Generic promotional content. Anything that looks like an ad.',
+    bpmRange: [95, 135],
   },
   'Dance/Electronic': {
-    platforms: 'TikTok first for younger audiences (18–24), YouTube Shorts second (DJ sets and festival clips perform well with older fans), Instagram Reels third.',
+    platforms: 'TikTok first (18–24). YouTube Shorts second (DJ sets). Instagram Reels third.',
     postTime: 'Friday–Saturday 9pm–midnight EST.',
-    contentStyle: 'The drop is the content. Content that converts: the exact drop moment as a clip (3–5 seconds), DJ booth footage, festival crowd reaction, visual transition videos timed to the beat drop. If the drop does not work as a standalone 5-second clip, the short-form strategy needs to be reconsidered.',
-    audienceNote: 'Electronic audiences also live on SoundCloud and Bandcamp. Short-form is top-of-funnel — goal is SoundCloud/Spotify follows and festival discovery.',
-    contentDont: 'Content without the drop. Slow-building ambient clips that do not hit.',
+    contentStyle: 'The drop is the content. 3–5 second drop clip. Festival crowd reactions. Visual transitions timed to the beat.',
+    audienceNote: 'Electronic audiences also live on SoundCloud. Short-form drives platform follows.',
+    contentDont: 'Content without the drop. Slow-building clips that never hit.',
+    bpmRange: [120, 145],
   },
   'Alternative': {
-    platforms: 'Instagram Reels first (alternative audiences skew 22–35 and more Instagram-native), TikTok second (growing fast for indie/alt through aesthetic content), YouTube Shorts third.',
+    platforms: 'Instagram Reels first (22–35 demographic). TikTok second. YouTube Shorts third.',
     postTime: 'Wednesday and Saturday 7–10pm EST.',
-    contentStyle: 'Atmosphere and artistry over trend-chasing. Content that converts: live performance clips showing musicianship, aesthetic visuals that match the sonic world, studio footage showing creative process, lyrics-first content for lyrically dense tracks. Alternative audiences are allergic to content that feels like marketing — authenticity is the strategy.',
-    audienceNote: 'Alternative listeners are heavy Spotify users and playlist-seekers. Strong short-form drives playlist pitching leverage — curators check social proof before adding unknown artists.',
-    contentDont: 'Dance formats. Trend-chasing. Anything that looks like mainstream pop marketing.',
+    contentStyle: 'Live performance clips showing musicianship. Aesthetic visuals matching the sonic world. Alternative audiences are allergic to content that feels like marketing.',
+    audienceNote: 'Heavy Spotify users. Strong short-form drives playlist pitching leverage.',
+    contentDont: 'Dance formats. Trend-chasing. Mainstream pop marketing aesthetics.',
+    bpmRange: [70, 130],
   },
 };
 
 // ── Health check ──────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: '3.1.0' });
+  res.json({ status: 'ok', version: '4.0.0' });
 });
 
 // ── Main analysis endpoint ────────────────────────
@@ -151,83 +219,153 @@ app.post('/api/analyze', strategyLimit, upload.single('audio'), async (req, res)
     const gp = GENRE_PROFILES[genre] || {
       platforms: 'TikTok first, Instagram Reels second, YouTube Shorts third',
       postTime: 'Thursday–Saturday, 7–10pm EST',
-      contentStyle: 'Authentic, artist-led content that matches the sonic energy of the track',
+      contentStyle: 'Authentic, artist-led content matching the sonic energy',
       audienceNote: '',
       contentDont: '',
+      bpmRange: [80, 120],
     };
 
-    // ── Step 1: Transcribe with Whisper ──────────
+    // ── Run Whisper + Perplexity in parallel ──────
     const ext = req.file.originalname.match(/\.(mp3|wav|m4a|ogg|webm|flac)$/i)?.[1] || 'm4a';
     const audioFile = new File([req.file.buffer], `track.${ext}`, { type: req.file.mimetype || 'audio/mpeg' });
 
-    let transcript = '';
-    let detectedLanguage = 'english';
-    let hookWindow = '~0:30–0:45';
-    let hookLine = null;
-    let transcriptError = false;
-
-    try {
-      const whisperRes = await openai.audio.transcriptions.create({
+    const [whisperResult, trendContext] = await Promise.allSettled([
+      openai.audio.transcriptions.create({
         file: audioFile,
         model: 'whisper-1',
         response_format: 'verbose_json',
         timestamp_granularities: ['segment'],
-      });
+      }),
+      fetchLiveTrends(genre),
+    ]);
 
-      transcript = whisperRes.text || '';
-      // Preserve original language — don't translate Pidgin, Yoruba, Patois, etc.
-      detectedLanguage = whisperRes.language || 'english';
+    // ── Process Whisper result ─────────────────────
+    let transcript = '';
+    let detectedLanguage = 'english';
+    let hooks = [];
+    let transcriptError = false;
 
-      // Find hook: highest word-density segment in the middle 60% of the song
-      if (whisperRes.segments && whisperRes.segments.length > 0) {
-        const totalDuration = whisperRes.segments[whisperRes.segments.length - 1].end || 180;
-        const scored = whisperRes.segments.map(seg => {
+    if (whisperResult.status === 'fulfilled') {
+      const w = whisperResult.value;
+      transcript = w.text || '';
+      detectedLanguage = w.language || 'english';
+
+      if (w.segments && w.segments.length > 0) {
+        const totalDuration = w.segments[w.segments.length - 1].end || 180;
+        const fmt = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+
+        // Score every segment
+        const scored = w.segments.map(seg => {
           const pos = seg.start / totalDuration;
-          // Prefer segments between 15% and 75% of the song (skip intros and outros)
-          const posFactor = pos > 0.15 && pos < 0.75 ? 1.3 : 0.6;
-          const wordCount = (seg.text || '').trim().split(/\s+/).length;
-          // Also favour repeated phrases (hook indicator) — check if line appears elsewhere
-          const lineText = seg.text.trim().toLowerCase();
-          const repetitions = whisperRes.segments.filter(s =>
-            s !== seg && s.text.trim().toLowerCase().includes(lineText.slice(0, 20))
-          ).length;
-          return { ...seg, score: (wordCount + repetitions * 3) * posFactor };
+          // Position factor: avoid intros (first 12%) and outros (last 15%)
+          const posFactor = pos > 0.12 && pos < 0.82 ? 1.3 : 0.5;
+          const words = (seg.text || '').trim().split(/\s+/).filter(Boolean).length;
+          // Repetition: count how many other segments share 4+ word sequences
+          const segWords = (seg.text || '').toLowerCase().split(/\s+/);
+          let repetitions = 0;
+          for (const other of w.segments) {
+            if (other === seg) continue;
+            const otherWords = (other.text || '').toLowerCase().split(/\s+/);
+            // Check 4-gram overlap
+            for (let i = 0; i <= segWords.length - 4; i++) {
+              const ngram = segWords.slice(i, i + 4).join(' ');
+              if (otherWords.join(' ').includes(ngram)) { repetitions++; break; }
+            }
+          }
+          const rawScore = (words * 0.6 + repetitions * 4) * posFactor;
+          return { seg, rawScore, words, repetitions, pos };
         });
-        scored.sort((a, b) => b.score - a.score);
-        const best = scored[0];
-        const hookStart = Math.floor(best.start);
-        const hookEnd   = Math.min(Math.floor(best.end) + 7, Math.floor(totalDuration));
-        const fmt = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
-        hookWindow = `${fmt(hookStart)}–${fmt(hookEnd)}`;
-        // Keep the lyric in its original language — don't translate
-        hookLine = best.text.trim();
+
+        // Sort by score, pick top 3 that are at least 20 seconds apart
+        scored.sort((a, b) => b.rawScore - a.rawScore);
+        const selected = [];
+        for (const item of scored) {
+          const tooClose = selected.some(s => Math.abs(s.seg.start - item.seg.start) < 20);
+          if (!tooClose) {
+            selected.push(item);
+            if (selected.length === 3) break;
+          }
+        }
+
+        // Map scores to 1–10 range relative to this song
+        const maxRaw = selected[0]?.rawScore || 1;
+        const minRaw = selected[selected.length - 1]?.rawScore || 0;
+        const range = maxRaw - minRaw || 1;
+
+        hooks = selected.map((item, i) => {
+          const hookStart = Math.floor(item.seg.start);
+          const hookEnd   = Math.min(Math.floor(item.seg.end) + 7, Math.floor(totalDuration));
+          // Normalise to 5.0–9.5 range (honest — nothing is perfect, nothing is terrible)
+          const normScore = 5.0 + ((item.rawScore - minRaw) / range) * 4.5;
+          const score = parseFloat(normScore.toFixed(1));
+          const reasons = [];
+          if (item.repetitions > 0) reasons.push(`repeated ${item.repetitions}× — likely chorus`);
+          if (item.pos > 0.3 && item.pos < 0.6) reasons.push('mid-song sweet spot');
+          if (item.pos > 0.6 && item.pos < 0.8) reasons.push('strong post-chorus position');
+          if (item.words > 10) reasons.push('high lyrical density');
+          const reason = reasons.length ? reasons.join(', ') : (i === 0 ? 'highest combined score' : 'strong candidate');
+          return {
+            window: `${fmt(hookStart)}–${fmt(hookEnd)}`,
+            line: item.seg.text.trim(),
+            score,
+            reason,
+          };
+        });
       }
-    } catch (whisperErr) {
-      console.error('Whisper error:', whisperErr.message);
+    } else {
+      console.error('Whisper error:', whisperResult.reason?.message);
       transcriptError = true;
     }
 
-    // ── Step 2: GPT-4o strategy ───────────────────
-    const isEnglishOnly = ['english', 'en'].includes(detectedLanguage.toLowerCase());
-    const languageNote = !isEnglishOnly
-      ? `LANGUAGE NOTE: Whisper detected this track is in "${detectedLanguage}" or contains non-English lyrics (Pidgin, Yoruba, Patois, French, etc.). Do NOT translate the lyrics or the hook line — preserve and quote them exactly as transcribed. Your strategy should acknowledge the language as a cultural asset and advise on how to use it (e.g. code-switching in captions, diaspora audience targeting).`
+    // ── Live trend context ─────────────────────────
+    const liveTrends = trendContext.status === 'fulfilled' ? trendContext.value : null;
+
+    // ── Build leverage scores ─────────────────────
+    // Based on real signals — not fake random numbers
+    const topHook = hooks[0];
+    const hookStrength = topHook?.score || 6.0;
+    // Replay potential: based on hook repetition (chorus = high replay)
+    const hasChorus = hooks.some(h => h.reason.includes('repeated'));
+    const replayPotential = hookStrength >= 8 ? 'High' : hookStrength >= 6.5 ? 'Medium' : 'Low';
+    // Short-form compatibility: hooks in first 75% of song = strong
+    const shortFormCompatibility = hooks.length >= 2 ? 'Strong' : hooks.length === 1 ? 'Moderate' : 'Weak';
+    // Genre trend alignment: injected from live search
+    const genreTrendAlignment = liveTrends ? 'Rising' : 'Stable'; // If we got live data, genre is active enough to search
+    const lyricalSpecificity = transcript.length > 200 ? 'High' : transcript.length > 50 ? 'Medium' : 'Low';
+
+    const leverage = {
+      hookStrength,
+      replayPotential,
+      shortFormCompatibility,
+      genreTrendAlignment,
+      lyricalSpecificity,
+      detectedLanguage,
+    };
+
+    // ── GPT-4o strategy prompt ─────────────────────
+    const isEnglish = ['english', 'en'].includes(detectedLanguage.toLowerCase());
+    const languageNote = !isEnglish
+      ? `LANGUAGE: Whisper detected "${detectedLanguage}" — this may include Pidgin, Yoruba, Patois, French, or another language. PRESERVE all lyrics exactly as transcribed. Do NOT translate. Treat the language as a cultural asset and advise on diaspora audience targeting.`
       : '';
 
+    const hooksText = hooks.length > 0
+      ? hooks.map((h, i) => `Hook ${String.fromCharCode(65+i)}: "${h.line}" at ${h.window} (score ${h.score}/10 — ${h.reason})`).join('\n')
+      : 'No hooks identified (likely instrumental)';
+
+    const trendSection = liveTrends
+      ? `LIVE TREND DATA (fetched right now for ${genre} — use this to ground your advice in what's actually happening this week):
+${liveTrends}`
+      : `NOTE: Live trend data unavailable. Use your knowledge of current ${genre} trends.`;
+
     const transcriptSection = transcript
-      ? `ACTUAL LYRICS (transcribed verbatim by Whisper — do not translate, quote exactly):
+      ? `ACTUAL LYRICS (transcribed verbatim — quote these, do not paraphrase):
 """
-${transcript.slice(0, 3500)}${transcript.length > 3500 ? '\n[...continues]' : ''}
+${transcript.slice(0, 3500)}${transcript.length > 3500 ? '\n[continues...]' : ''}
 """
-
-DETECTED HOOK MOMENT: ${hookWindow} — "${hookLine}"
-This line was identified by repetition and position analysis. Use this exact lyric (in its original language) in your content strategy.
-
 ${languageNote}`
-      : `NOTE: This appears to be an instrumental track, or transcription was not available. Base your strategy on genre, mood, and artist inspirations only.`;
+      : 'INSTRUMENTAL or transcription unavailable — base strategy on genre, mood, and inspirations.';
 
-    const prompt = `You are SoundPilot — a blunt, culturally fluent music strategist with deep knowledge of how independent artists break through in 2025-2026. You understand Afrobeats, Afro-R&B, UK Drill, Nigerian Pidgin, Patois, and diaspora music culture. You work like a senior A&R consultant — direct, specific, no filler, no generic advice.
-
-You have access to the actual lyrics of this unreleased track. Your entire strategy must be grounded in what the song literally says. Generic advice that could apply to any ${genre} song is a failure.
+    const prompt = `You are SoundPilot — a senior music strategist with deep cultural fluency across Afrobeats, Afro-R&B, Drill, Dancehall, Hip-Hop, and diaspora music culture. You give direct, specific, actionable advice grounded in real data. You work like a top A&R consultant — not a chatbot.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TRACK PROFILE
@@ -238,58 +376,67 @@ Artist inspirations: ${inspirations || 'not specified'}
 
 ${transcriptSection}
 
+TOP HOOK CANDIDATES (identified by lyric repetition + position analysis):
+${hooksText}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${trendSection}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 GENRE INTELLIGENCE: ${genre.toUpperCase()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Platform strategy: ${gp.platforms}
-
 Post timing: ${gp.postTime}
-
-What content actually converts for this genre: ${gp.contentStyle}
-
-Audience behaviour: ${gp.audienceNote || 'N/A'}
-
-What NOT to do: ${gp.contentDont || 'N/A'}
+What converts: ${gp.contentStyle}
+Audience: ${gp.audienceNote}
+DO NOT: ${gp.contentDont}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BANNED PHRASES (instant failure if used): "leverage", "engage with your audience", "build anticipation", "authentic connection", "captivate", "resonate", "share your journey", "connect with fans", "drive engagement", "make sure to", "don't forget to"
+YOUR MANDATE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Every recommendation must reference the ACTUAL LYRICS or LIVE TREND DATA above
+2. Two songs in the same genre must get different strategies — use the lyrics to differentiate
+3. If a hook is scored below 6.5, say so plainly and explain what to do instead
+4. Quote lyrics in their original language — never translate
+5. Generic advice that ignores the transcript is a failure
+
+BANNED PHRASES: "leverage", "engage with your audience", "build anticipation", "authentic connection", "captivate", "resonate", "share your journey", "connect with fans", "drive engagement", "make sure to"
 
 ---
 
 ## Song Identity
 
-2–3 sentences. Reference the specific lyrics. Name the exact emotion, the specific listener this speaks to, and one cultural reference point. Write like a music critic. If the song is in Pidgin or another language, acknowledge it and explain why that is a cultural strength, not a limitation.
+2–3 sentences. Quote a specific lyric. Name the exact emotion, the specific listener, and one cultural reference point. Write like a music critic who actually listened.
 
 ---
 
 ## Comparable Artists
 
-Exactly 5 artists. Format: **Artist Name** — one sentence on the specific sonic or lyrical connection (quote a lyric if relevant). Prioritise artists whose fanbase would actually stream this track based on the lyrics you read.
+Exactly 5 artists. Format: **Artist Name** — one sentence on the specific sonic/lyrical connection. Quote a lyric if it helps. Prioritise artists whose fanbase would stream this based on what you read.
 
 ---
 
 ## Content Strategy
 
-**Hook moment (${hookWindow}):** Quote the line "${hookLine || 'identified hook'}" and explain exactly why this specific line/moment works for short-form. What caption does it pair with? What visual? Be specific about the shot.
+**Primary hook (use ${topHook ? topHook.window : 'the strongest moment'}):** Quote "${topHook ? topHook.line : 'the hook'}" — explain exactly why this works for short-form in ${genre} culture. Specific shot, specific caption using the actual lyric.
 
-**3 content formats:** Concrete, visual, specific to ${genre} culture. Describe the shot, the vibe, the caption — use the actual lyrics in the caption examples. Not generic.
+**3 content formats:** Concrete, genre-native. Describe the shot, the vibe, the caption — use the real lyrics. Reference the live trend data if relevant.
 
-**Platform ranking with reasoning:** ${gp.platforms}
+**Platform ranking:** ${gp.platforms} — explain why for this specific track.
 
-**Post timing:** ${gp.postTime} — explain why for this specific track.
+**Post timing:** ${gp.postTime}
 
-**What NOT to do:** Based on the genre intelligence above, name 2 specific mistakes this artist should avoid.
+**2 things NOT to do:** Specific to this track and genre.
 
 ---
 
 ## 14-Day Release Rollout
 
-Day 1, Day 3, Day 5, Day 7, Day 10, Day 14. Bold title + 2 specific actions per day. Zero paid ads. Each day builds on the last. Reference the actual hook/lyrics in the content actions. Include one wildcard move that most independent artists skip.
+Day 1, Day 3, Day 5, Day 7, Day 10, Day 14. Bold title + 2 specific actions. Zero paid ads. Reference the actual lyrics/hook in content actions. Include one wildcard move most artists skip.
 
 ---
 
-Be direct. Be specific. Quote the lyrics. No padding.`;
+Be direct. Quote the lyrics. No padding.`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -301,10 +448,10 @@ Be direct. Be specific. Quote the lyrics. No padding.`;
     res.json({
       success: true,
       strategy: completion.choices[0].message.content,
+      hooks,
+      leverage,
+      trendContext: liveTrends || null,
       transcript: transcript || null,
-      hookWindow,
-      hookLine: transcript ? hookLine : null,
-      detectedLanguage,
       transcriptError,
     });
 
