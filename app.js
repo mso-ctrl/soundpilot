@@ -364,12 +364,12 @@ genBtn.addEventListener('click', async () => {
     await step('p1', 900);
     await step('p2', 1200);
     await setActive('p3');
-    const strategy = await callBackend(genre, mood, insps, features);
+    const data = await callBackend(genre, mood, insps, features);
     setDone('p3');
     await step('p4', 500);
 
     progWrap.classList.add('hidden');
-    showResults(features, strategy);
+    showResults(features, data);
   } catch (err) {
     progWrap.classList.add('hidden');
     resetGenBtn();
@@ -407,10 +407,12 @@ async function callBackend(genre, mood, inspirations, features) {
   formData.append('genre', genre);
   formData.append('mood', mood || '');
   formData.append('inspirations', inspirations || '');
+  // Still send local features as fallback metadata
   formData.append('audioData', JSON.stringify(features));
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+  // Whisper on a full song can take 30-60s — give it 2 minutes
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
   let res;
   try {
     res = await fetch(`${API_BASE}/api/analyze`, {
@@ -420,7 +422,7 @@ async function callBackend(genre, mood, inspirations, features) {
     });
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e.name === 'AbortError') throw new Error('Request timed out. Your track may be too large — try a shorter version, or check your connection.');
+    if (e.name === 'AbortError') throw new Error('Request timed out — Whisper may still be transcribing. Try again or use a shorter clip.');
     throw e;
   }
   clearTimeout(timeoutId);
@@ -432,41 +434,52 @@ async function callBackend(genre, mood, inspirations, features) {
     throw new Error(data.error || `Server error ${res.status}`);
   }
 
-  return data.strategy;
+  // Return full response object
+  return data;
 }
 
 // ── Render results ─────────────────────────────────
-function showResults(features, text) {
-  // HookFinder metrics
+function showResults(features, data) {
+  // data is the full backend response object
+  const text       = data.strategy || data; // fallback if old format
+  const hookWindow = data.hookWindow || (features.hookStart ? `${features.hookStart}–${features.hookEnd}` : '—');
+  const hookLine   = data.hookLine   || null;
+  const transcript = data.transcript || null;
+
+  // HookFinder metrics — real data only, no fake scores
   hfrMetrics.innerHTML = `
     <div class="hfr-metric">
-      <span class="hfm-val accent">${features.hookStart} – ${features.hookEnd}</span>
-      <span class="hfm-key">Best clip</span>
+      <span class="hfm-val accent">${hookWindow}</span>
+      <span class="hfm-key">Hook window</span>
     </div>
-    <div class="hfr-metric">
-      <span class="hfm-val">${features.hookStrength}</span>
-      <span class="hfm-key">Hook Strength</span>
-    </div>
-    <div class="hfr-metric">
-      <span class="hfm-val">${features.replayPotential}</span>
-      <span class="hfm-key">Replay Potential</span>
-    </div>
-    <div class="hfr-metric">
-      <span class="hfm-val">${features.contentScore}</span>
-      <span class="hfm-key">Content Potential</span>
-    </div>
+    ${hookLine ? `
+    <div class="hfr-metric hfr-metric--wide">
+      <span class="hfm-val hfm-quote">"${hookLine.length > 60 ? hookLine.slice(0,57)+'…' : hookLine}"</span>
+      <span class="hfm-key">Strongest line</span>
+    </div>` : ''}
     ${features.bpm ? `<div class="hfr-metric"><span class="hfm-val">${features.bpm}</span><span class="hfm-key">BPM</span></div>` : ''}
     <div class="hfr-metric">
-      <span class="hfm-val">${features.energy}</span>
+      <span class="hfm-val">${features.energy || '—'}</span>
       <span class="hfm-key">Energy</span>
     </div>
+    <div class="hfr-metric">
+      <span class="hfm-val">${features.tone || '—'}</span>
+      <span class="hfm-key">Tone</span>
+    </div>
+    ${transcript ? `
+    <div class="hfr-metric hfr-metric--badge">
+      <span class="hfm-badge">✦ Lyrics transcribed</span>
+    </div>` : `
+    <div class="hfr-metric hfr-metric--badge">
+      <span class="hfm-badge hfm-badge--dim">No lyrics detected</span>
+    </div>`}
   `;
 
-  // Share card
+  // Share card — show hook line instead of fake scores
   scMetrics.innerHTML = `
-    <div class="sc-m"><span class="sc-v">${features.hookStrength}</span><span class="sc-k">Hook Strength</span></div>
-    <div class="sc-m"><span class="sc-v">${features.contentScore}</span><span class="sc-k">Content Potential</span></div>
-    <div class="sc-m"><span class="sc-v">${features.replayPotential}</span><span class="sc-k">Replay Score</span></div>
+    <div class="sc-m"><span class="sc-v">${hookWindow}</span><span class="sc-k">Hook Window</span></div>
+    ${hookLine ? `<div class="sc-m sc-m--wide"><span class="sc-v sc-v--sm">"${hookLine.length > 40 ? hookLine.slice(0,37)+'…' : hookLine}"</span><span class="sc-k">Hook Line</span></div>` : ''}
+    <div class="sc-m"><span class="sc-v">${features.energy || '—'}</span><span class="sc-k">Energy</span></div>
   `;
 
   // Parse AI sections
