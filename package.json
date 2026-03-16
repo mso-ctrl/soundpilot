@@ -1,0 +1,12 @@
+{
+  "name": "soundpilot",
+  "version": "2.0.0",
+  "description": "SoundPilot — AI label infrastructure for independent artists",
+  "scripts": {
+    "start": "node server/index.js",
+    "install:server": "cd server && npm install"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
