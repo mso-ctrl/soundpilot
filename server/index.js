@@ -182,6 +182,6 @@ app.get('*', (req, res) => {
 });
 
 // ── Start ──────────────────────────────────────────
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`SoundPilot server running on port ${port}`);
 });
