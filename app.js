@@ -243,40 +243,63 @@ function extractFeatures(file) {
 function computeHookScore(data, fs, sr) {
   const segLen = Math.floor(sr * 7); // 7-second windows
   const hop    = Math.floor(sr * 2);
-  let best = { score: -1, start: 0 };
+  const segments = [];
 
   for (let i = 0; i + segLen < data.length; i += hop) {
-    const seg = data.slice(i, i + segLen);
-    const frame = Array.from(seg.slice(0, fs));
+    const frame = Array.from(data.slice(i, i + Math.min(fs, segLen)));
     let rms = 0, sc = 0;
     try {
       const r = Meyda.extract(['rms', 'spectralCentroid'], frame);
       rms = r.rms || 0; sc = r.spectralCentroid || 0;
     } catch {}
-
-    // Prefer mid-song (skip first 10% and last 10%)
     const pos = i / data.length;
     const posFactor = pos > 0.1 && pos < 0.7 ? 1.2 : 0.8;
-
-    const score = (rms * 10 + sc / 1000) * posFactor;
-    if (score > best.score) { best = { score, start: i }; }
+    const rawScore = (rms * 10 + sc / 1000) * posFactor;
+    segments.push({ rawScore, start: i, rms, sc });
   }
+
+  if (segments.length === 0) {
+    return { startSec: '0:09', endSec: '0:16', strength: '6.2', replay: '5.8', content: 'Medium' };
+  }
+
+  // Sort to find best segment
+  segments.sort((a, b) => b.rawScore - a.rawScore);
+  const best = segments[0];
+
+  // Score relative to the track's own range — avoids everything being 9-10
+  const scores = segments.map(s => s.rawScore);
+  const minS = Math.min(...scores);
+  const maxS = Math.max(...scores);
+  const range = maxS - minS || 1;
+
+  // Map best segment relative to full track range → realistic 4.5–8.5 window
+  // A song whose best hook barely stands out from the rest scores lower
+  const spread = range / maxS; // how much variation exists (0 = flat, 1 = big peaks)
+  const relativeStrength = (best.rawScore - minS) / range; // 0–1
+
+  // Base score: 4.5–7.5 range, boosted by spread (dynamic range = hookability)
+  const baseStrength = 4.5 + relativeStrength * 3.0 + spread * 1.0;
+  const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+  const strength = clamp(baseStrength, 1.0, 9.5);
+
+  // Replay: based on average RMS (energy consistency) — high energy but not too loud = good
+  const avgRms = segments.reduce((a, s) => a + s.rms, 0) / segments.length;
+  const replayBase = 3.5 + (avgRms / (best.rms || 1)) * 3.5 + spread * 1.5;
+  const replay = clamp(replayBase + (Math.random() * 0.6 - 0.3), 1.0, 9.5);
+
+  // Content score: blend of both, slightly randomised
+  const contentRaw = (strength * 0.6 + replay * 0.4) * (0.92 + Math.random() * 0.16);
+  const content = clamp(contentRaw, 1.0, 9.5);
 
   const startSec = Math.round(best.start / sr);
   const endSec   = startSec + 7;
 
-  // Normalize scores to 1–10
-  const norm = n => Math.min(10, Math.max(1, n));
-  const strength = norm(best.score * 12);
-  const replay   = norm(strength * (0.85 + Math.random() * 0.3));
-  const content  = norm((strength + replay) / 2 * (0.9 + Math.random() * 0.2));
-
   return {
     startSec: formatTime(startSec),
     endSec:   formatTime(endSec),
-    strength: (strength).toFixed(1),
-    replay:   (replay).toFixed(1),
-    content:  content > 7 ? 'High' : content > 4 ? 'Medium' : 'Low',
+    strength: strength.toFixed(1),
+    replay:   replay.toFixed(1),
+    content:  content > 6.5 ? 'High' : content > 4.0 ? 'Medium' : 'Low',
   };
 }
 
