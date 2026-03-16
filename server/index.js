@@ -148,6 +148,51 @@ app.post('/api/analyze', strategyLimit, upload.single('audio'), async (req, res)
       ? 'decent hook but it needs visual framing — pair it with a strong opening shot or caption to land'
       : 'the hook is subtle — lean into mood and atmosphere rather than chasing a single viral moment';
 
+    // ── Track-level differentiators ─────────────────────
+    // These push the advice beyond the genre default based on actual audio data
+    const bpm = features.bpm || 0;
+    const energy = features.energy || 'Medium';
+    const tone = features.tone || 'Warm';
+    const detectedMood = features.mood || 'Melodic';
+
+    // BPM context: flag unusual tempos for genre
+    const genreBpmRanges = {
+      'Afrobeats': [90, 115], 'Afro-R&B': [65, 95], 'Hip-Hop/Rap': [75, 100],
+      'R&B': [60, 95], 'Drill': [130, 160], 'Pop': [95, 135],
+      'Dance/Electronic': [120, 145], 'Reggaeton': [90, 105], 'Soul/Gospel': [60, 90],
+    };
+    const bpmRange = genreBpmRanges[genre];
+    const bpmNote = bpmRange && bpm > 0
+      ? (bpm < bpmRange[0]
+          ? 'TEMPO NOTE: This track is slower than the typical ' + genre + ' range (' + bpmRange[0] + '-' + bpmRange[1] + ' BPM). Flag this in your strategy — slower tempo changes which content formats work and may suit a more cinematic, scrolling aesthetic over fast cuts.'
+          : bpm > bpmRange[1]
+          ? 'TEMPO NOTE: This track is faster than the typical ' + genre + ' range (' + bpmRange[0] + '-' + bpmRange[1] + ' BPM). Flag this — the faster energy could be used for quick-cut edits or trending audio swap formats.'
+          : 'Tempo sits comfortably within the typical ' + genre + ' range.')
+      : '';
+
+    // Energy + tone modifiers — change content direction within same genre
+    const energyNote = energy === 'High'
+      ? 'HIGH ENERGY track — content should match: fast cuts, movement, physical reactions. Avoid slow/moody aesthetics.'
+      : energy === 'Low'
+      ? 'LOW ENERGY track — this needs a stillness-forward approach: single-shot clips, long holds, minimal movement. Trending audio swaps won\'t work here.'
+      : 'MID ENERGY — flexible. Test both movement-led and static aesthetic content to see what clicks.';
+
+    const toneNote = tone === 'Bright'
+      ? 'Bright/sharp tone — visually, think daylight, clean aesthetics, high contrast. Avoid dark moody filters.'
+      : tone === 'Dark'
+      ? 'Dark tone — visually, think low light, night settings, muted colour grading. Fits late-night TikTok scroll behaviour.'
+      : 'Warm tone — golden hour aesthetics, intimate settings work well. Mid-range visual palette.';
+
+    const moodNote = detectedMood === 'Energetic'
+      ? 'Energetic mood — prioritise content that puts the energy on screen. Viewer should feel it in 2 seconds.'
+      : detectedMood === 'Melancholic'
+      ? 'Melancholic mood — this is a storytelling track. POV captions, text overlays, and emotional comment-bait angles will perform better than dance/trend formats.'
+      : 'Melodic mood — balance between vibe and narrative. Works for both aesthetic and story-driven content.';
+
+    const inspirationNote = (inspirations && inspirations.trim())
+      ? 'Artist cites ' + inspirations + ' as inspirations — factor their fanbase culture, visual aesthetic, and the platforms where those artists\'s audiences are most active into your content recommendations.'
+      : '';
+
     const prompt = `You are SoundPilot — a blunt, culturally sharp music strategist. You work like a top indie A&R consultant: direct, specific, zero filler. You know the difference between Afrobeats and Afro-R&B, between drill and trap, between what drives streams on TikTok Lagos vs TikTok Toronto.
 
 TRACK PROFILE:
@@ -155,19 +200,26 @@ TRACK PROFILE:
 - Mood/theme: ${mood || 'not given'}
 - Artist inspirations: ${inspirations || 'not given'}
 - Tempo: ${bpmStr}
-- Energy: ${features.energy || 'Medium'}
-- Tone: ${features.tone || 'Warm'}
-- Detected mood: ${features.mood || 'Melodic'}
+- Energy: ${energy}
+- Tone: ${tone}
+- Detected mood: ${detectedMood}
 - Hook window: ${hookStr} | Hook Strength: ${features.hookStrength || '6.5'}/10 — ${hookVerdict}
 
-GENRE INTELLIGENCE FOR ${genre.toUpperCase()}:
+AUDIO ANALYSIS FLAGS (use these to make this strategy different from every other ${genre} song):
+- ${energyNote}
+- ${toneNote}
+- ${moodNote}
+- ${bpmNote}
+- ${inspirationNote}
+
+GENRE BASELINE FOR ${genre.toUpperCase()} (starting point — override where the audio flags above suggest it):
 - Platform priority: ${gp.platforms}
 - Optimal post window: ${gp.postTime}
-- Content style that works for this genre: ${gp.contentStyle}
+- Default content style: ${gp.contentStyle}
 
-YOUR JOB: Give this artist a release strategy that no generic AI tool would produce. Be genre-native. Reference actual cultural moments, real platform behaviours, and current trends specific to ${genre}. If the hook score is below 5.5, say it plainly and redirect the strategy. If the BPM is unusual for this genre, flag it and explain the implication.
+YOUR JOB: Use the AUDIO ANALYSIS FLAGS above to write a strategy that is specific to THIS track, not just the genre. Two ${genre} songs with different energy, tempo, and tone should get meaningfully different advice. If a flag contradicts the genre default, follow the flag. Be direct about weaknesses.
 
-BANNED PHRASES — do not use these at all: "leverage", "engage with your audience", "build anticipation", "authentic connection", "captivate", "resonate", "share your journey", "connect with fans", "drive engagement", "behind the scenes content", "make sure to".
+BANNED PHRASES — do not use: "leverage", "engage with your audience", "build anticipation", "authentic connection", "captivate", "resonate", "share your journey", "connect with fans", "drive engagement", "behind the scenes content", "make sure to".
 
 ---
 
