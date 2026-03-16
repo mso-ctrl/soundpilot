@@ -340,22 +340,25 @@ genBtn.addEventListener('click', async () => {
   const insps = inspsEl.value.trim();
   if (!audioFile || !genre) return;
 
-  // Wait up to 15s for audio extraction to finish (full songs take time)
+  // Disable button immediately, show extraction status
+  genBtn.disabled = true;
+  genLabel.textContent = 'Reading audio...';
+  genArrow && (genArrow.outerHTML = '<div class="spinner"></div>');
+  errMsg.classList.add('hidden');
+
+  // Wait up to 20s for audio extraction to finish (full songs take time)
   if (!audioFeatures) {
     let waited = 0;
-    while (!audioFeatures && waited < 15000) {
+    while (!audioFeatures && waited < 20000) {
       await sleep(300);
       waited += 300;
     }
   }
   const features = audioFeatures || defaultFeatures(null);
 
-  // Start
-  genBtn.disabled = true;
+  // Now start the actual analysis UI
   genLabel.textContent = 'Analyzing...';
-  genArrow && (genArrow.outerHTML = '<div class="spinner"></div>');
   progWrap.classList.remove('hidden');
-  errMsg.classList.add('hidden');
 
   try {
     await step('p1', 900);
@@ -406,10 +409,21 @@ async function callBackend(genre, mood, inspirations, features) {
   formData.append('inspirations', inspirations || '');
   formData.append('audioData', JSON.stringify(features));
 
-  const res = await fetch(`${API_BASE}/api/analyze`, {
-    method: 'POST',
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/analyze`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') throw new Error('Request timed out. Your track may be too large — try a shorter version, or check your connection.');
+    throw e;
+  }
+  clearTimeout(timeoutId);
 
   const data = await res.json().catch(() => ({}));
 
