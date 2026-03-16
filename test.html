@@ -594,12 +594,8 @@ function getSessionId() {
 }
 
 function getVoterId() {
-  let id = localStorage.getItem('sp_voter_id');
-  if (!id) {
-    id = 'v_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem('sp_voter_id', id);
-  }
-  return id;
+  // Use in-memory ID only — server handles dedup via IP fingerprint
+  return 'v_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 function hideAll() {
@@ -712,15 +708,6 @@ async function loadSession() {
       return;
     }
 
-    // Check voter ID in local storage
-    const localKey = `sp_voted_${sessionId}`;
-    const localVote = localStorage.getItem(localKey);
-    if (localVote !== null) {
-      show($alreadyVoted);
-      renderVoteBars(data.hooks, data.votes || {}, $alreadyVoteResults, parseInt(localVote, 10));
-      return;
-    }
-
     // Show vote UI
     showVoteUI(data);
 
@@ -821,9 +808,6 @@ async function submitVote() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
-
-    // Remember vote locally
-    localStorage.setItem(`sp_voted_${sessionId}`, String(selectedHookIndex));
 
     // Show thank you with live bars
     show($thankyou);
