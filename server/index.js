@@ -14,14 +14,9 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ── Middleware ─────────────────────────────────────
 app.use(cors({
-  origin: [
-    'https://mso-ctrl.github.io',
-    'http://localhost:3001',
-    'http://localhost:5500',
-    'http://127.0.0.1:5500',
-    /\.railway\.app$/,
-  ],
+  origin: true, // allow all origins
   methods: ['GET', 'POST'],
+  credentials: true,
 }));
 app.use(express.json());
 
