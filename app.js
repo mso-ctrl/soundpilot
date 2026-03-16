@@ -340,7 +340,14 @@ genBtn.addEventListener('click', async () => {
   const insps = inspsEl.value.trim();
   if (!audioFile || !genre) return;
 
-  if (!audioFeatures) await sleep(1200);
+  // Wait up to 15s for audio extraction to finish (full songs take time)
+  if (!audioFeatures) {
+    let waited = 0;
+    while (!audioFeatures && waited < 15000) {
+      await sleep(300);
+      waited += 300;
+    }
+  }
   const features = audioFeatures || defaultFeatures(null);
 
   // Start

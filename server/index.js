@@ -71,50 +71,66 @@ app.get('/api/health', (req, res) => {
 
 // ── Genre profiles ───────────────────────────────────
 const GENRE_PROFILES = {
-  'Afro-R&B':         {
-    platforms: 'Instagram Reels first (diaspora community is strongest there), TikTok second, YouTube Shorts third',
-    postTime: 'Thursday–Saturday, 7–10pm EST',
-    contentStyle: 'aesthetics-first — soft lighting, late-night bedroom energy, outfit fits, subtle movement. No hype edits.',
+  'Afrobeats': {
+    platforms: 'TikTok first — Afrobeats blows up through dance challenges and the For You page algorithm, not through followers. Instagram Reels second (diaspora community reposts). YouTube Shorts third (longer shelf life but slower ignition).',
+    postTime: 'Friday 8pm–midnight EST and Saturday 6pm–11pm EST. The African diaspora is most active Friday night across North America, UK, and Europe simultaneously — this is when Afrobeats content spreads fastest.',
+    contentStyle: 'Dance is the primary discovery engine for Afrobeats. Content that works: a short dance routine on the hook (even just 8 counts), street/lifestyle clips showing the culture, group reaction videos, and diaspora pride moments. Colour grading should be vibrant — warm, saturated, not moody. Avoid sitting-down or talking-to-camera content unless it is extremely charismatic. The comment section is part of the strategy: Afrobeats audiences tag friends heavily, so post with a caption that invites tagging.',
+    bpmNote: 'Afrobeats typically runs 95–115 BPM. The percussion pattern (dembow-adjacent kick/snare) is what audiences lock on to for dance — flag if BPM deviates.',
+    audienceNote: 'Core audience: Nigerian, Ghanaian, Kenyan diaspora in UK, USA, Canada. Secondary: broader African-American and Latinx audiences discovering the genre. Platform behaviour: heavy sharing, tagging, and group viewing.',
   },
-  'Afrobeats':        {
-    platforms: 'TikTok first (dance trends drive Afrobeats discovery), Instagram Reels second, YouTube Shorts third',
-    postTime: 'Friday–Sunday, 6–11pm EST',
-    contentStyle: 'dance challenges, street style, vibrant colour grading, diaspora pride moments',
+  'Afro-R&B': {
+    platforms: 'Instagram Reels first — Afro-R&B thrives on aesthetics and the Instagram visual culture is where this audience lives. TikTok second (growing fast but audience skews slightly younger than the core Afro-R&B listener). YouTube for full song streams and long-form.',
+    postTime: 'Thursday 9pm–midnight EST and Saturday 8pm–11pm EST. Afro-R&B listeners are late-night streamers — they put this on when they are winding down, getting ready to go out, or in a situationship.',
+    contentStyle: 'Aesthetics over energy. Content that works: soft lighting, golden hour or candlelight, bedroom/apartment settings, outfit fits, subtle swaying — not full dancing. Text overlays with a line from the song work extremely well for this genre. The artist does NOT need to be in every clip — a cinematic empty-room shot with the vocals playing converts well. Avoid hype edits, quick cuts, or trend formats designed for Afrobeats — they kill the mood.',
+    audienceNote: 'Core audience: 20–30 year old Black women and men in UK, USA, Canada. This audience responds strongly to emotional specificity — lyrics about situationships, late nights, longing perform best.',
   },
-  'Hip-Hop/Rap':      {
-    platforms: 'TikTok first, YouTube Shorts second, Instagram Reels third',
-    postTime: 'Tuesday, Thursday, Saturday — 8–11pm EST',
-    contentStyle: 'bars-focused clips, freestyle energy, studio or street authenticity — avoid over-produced content',
+  'Amapiano': {
+    platforms: 'TikTok first — Amapiano spreads almost entirely through dance on TikTok, specifically the log drum groove. Instagram Reels second (South African diaspora is strong here). YouTube Shorts third.',
+    postTime: 'Friday evening and Saturday afternoon EST — when South African diaspora and African-American audiences are most active.',
+    contentStyle: 'The log drum is the hook, not the vocals. Content that works: groove-based movement (not choreographed dance, more body isolation and footwork), house party clips, sunset/golden hour aesthetic, South African fashion and lifestyle. The yano shuffle and other dance styles from SA spread fast on TikTok. Colour grade warm and bright. Avoid moody or dark visuals — Amapiano is about elevation and celebration.',
+    audienceNote: 'Growing fast in UK and USA. Core: South African diaspora + African-American listeners discovering through TikTok. The genre is still early enough that an unknown artist can go viral with the right dance clip.',
   },
-  'R&B':              {
-    platforms: 'Instagram Reels first, TikTok second, YouTube Shorts third',
-    postTime: 'Wednesday and Saturday, 7–10pm EST',
-    contentStyle: 'emotional storytelling, moody aesthetics, POV-style clips. Let the vocals carry the content.',
+  'Hip-Hop/Rap': {
+    platforms: 'TikTok first — rap discovery is now dominated by 15-second bar clips and beat previews on FYP. YouTube Shorts second (rap has a strong YouTube-native audience who watch reaction videos and cyphers). Instagram Reels third.',
+    postTime: 'Tuesday and Thursday 9pm–midnight EST, Saturday 8pm–11pm EST. Avoid Sunday morning — rap audiences are not active then.',
+    contentStyle: 'Content that works: 15-second bar-focused clips (pick the most quotable line, not just the hook), freestyle energy clips, studio session footage that feels raw and unscripted, beat reaction videos. The artist should look like they belong — over-produced or polished content kills credibility in rap. Lyrics on screen (karaoke-style captions) dramatically increase watch time for rap content.',
+    audienceNote: 'TikTok rap audiences respond to quotability above all else. One memorable bar, delivered with conviction, can do more than a full promotional campaign.',
   },
-  'Pop':              {
-    platforms: 'TikTok first, Instagram Reels second, YouTube Shorts third',
-    postTime: 'Thursday–Saturday, 5–9pm EST',
-    contentStyle: 'hook-driven, trend-adjacent concepts, emotional or comedic angle',
+  'R&B': {
+    platforms: 'Instagram Reels first — R&B is a visual-aesthetic genre and Instagram is still the dominant platform for this. TikTok second (R&B is growing on TikTok through emotional POV content). YouTube for streams.',
+    postTime: 'Wednesday 8–11pm EST and Saturday 7–10pm EST.',
+    contentStyle: 'Emotional storytelling is the engine. Content that works: POV clips with a caption that sets a specific scenario (e.g. "when they say they miss you but..."), moody aesthetic clips with lyrics as text overlay, artist performance clips that show vocal range, candlelit or softly lit visuals. The comment section is key — R&B audiences leave long comments about their personal situations. Post with a caption that opens a conversation.',
+    audienceNote: 'Core audience: 18–35 Black women and men in USA and UK. This audience streams heavily on Spotify and Apple Music — good TikTok performance directly converts to playlist adds.',
+  },
+  'Drill': {
+    platforms: 'YouTube Shorts first — drill has one of the strongest YouTube-native audiences of any genre. Street rap blogs and reaction channels extend reach significantly. TikTok second. Instagram Reels third.',
+    postTime: 'Friday and Saturday, 9pm–2am EST.',
+    contentStyle: 'Raw and unfiltered. Content that works: studio session clips with the beat playing, no-frills performance footage, lyric videos for YouTube, cyphers and freestyles. Do NOT over-produce drill content — it reads as inauthentic immediately. The artist should look comfortable and in their element, not like they are performing for a camera. Keep colour grading minimal — desaturated or natural works better than heavily filtered.',
+    audienceNote: 'Drill audiences are intensely loyal but hard to crack from the outside. The strongest entry point is YouTube — a strong lyric video or studio clip can get picked up by reaction channels which multiply reach significantly.',
+  },
+  'Dancehall': {
+    platforms: 'TikTok first — Dancehall spreads through dance challenges almost exclusively on short-form. Instagram Reels second. YouTube for full videos and riddim playlists.',
+    postTime: 'Friday 7pm–midnight EST and Saturday 6pm–11pm EST.',
+    contentStyle: 'Dance is non-negotiable for Dancehall — if there is no dance, there is no short-form strategy. Content that works: a simple, learnable dance routine on the hook (8–16 counts max), outdoor/beach/party settings, Caribbean fashion and lifestyle, vibrant colour grading. Dancehall riddim culture means the song needs to stand out on a riddim before it can spread — if it is a one-drop, the vocal performance needs to be the hook.',
+    audienceNote: 'Core: Caribbean diaspora in UK, USA, Canada. Secondary: African-American audience. Dancehall songs that get a challenge spread extremely fast — the challenge IS the marketing strategy.',
+  },
+  'Pop': {
+    platforms: 'TikTok first — pop discovery is almost entirely For You Page driven in 2025. Instagram Reels second. YouTube Shorts third.',
+    postTime: 'Thursday–Saturday 5–9pm EST.',
+    contentStyle: 'Hook-driven content — the first 2 seconds must grab. Content that works: emotional POV clips, trend-adjacent formats that use the song as a sound, transition videos on the instrumental break, comedic or relatable scenarios. Pop has the widest acceptable content range — almost any format works if the hook is strong enough. Test 2–3 different content angles in the first week to see what the algorithm responds to.',
+    audienceNote: 'Pop has the broadest demographic but the most competitive For You Page. Differentiation is critical — generic pop content disappears instantly.',
   },
   'Dance/Electronic': {
-    platforms: 'TikTok first, YouTube Shorts second, Instagram Reels third',
-    postTime: 'Friday–Saturday, 9pm–midnight EST',
-    contentStyle: 'build/drop moments, visual transitions, festival energy, DJ set clips',
+    platforms: 'TikTok first for younger electronic audiences, YouTube Shorts second (DJ sets and festival clips perform well), Instagram Reels third.',
+    postTime: 'Friday–Saturday 9pm–midnight EST.',
+    contentStyle: 'Build and drop moments are the content. Content that works: the exact drop moment as a clip (3–5 seconds of the drop looped or cut), DJ booth footage, festival crowd reaction clips, visual transition videos timed to the beat. Electronic music lives on the energy of the drop — if the drop does not work as a short clip, the short-form strategy is harder.',
+    audienceNote: 'Electronic audiences are platform-diverse — they also live on SoundCloud, Bandcamp, and festival culture. Short-form is a top-of-funnel play to drive SoundCloud/Spotify follows.',
   },
-  'Drill':            {
-    platforms: 'YouTube Shorts first (drill has a YouTube-native audience), TikTok second, Instagram Reels third',
-    postTime: 'Friday–Sunday, 8pm–1am EST',
-    contentStyle: 'raw, unfiltered. Studio sessions, no-frills cuts over the beat. Authenticity over production.',
-  },
-  'Reggaeton':        {
-    platforms: 'TikTok first, Instagram Reels second, YouTube Shorts third',
-    postTime: 'Friday–Sunday, 7–11pm EST',
-    contentStyle: 'sensual movement, party clips, Latin lifestyle content',
-  },
-  'Soul/Gospel':      {
-    platforms: 'YouTube Shorts first, Instagram Reels second, TikTok third',
-    postTime: 'Sunday morning + Wednesday evening EST',
-    contentStyle: 'live performance clips, emotional reaction content, community moments',
+  'Alternative': {
+    platforms: 'Instagram Reels first (alternative audiences skew older and more Instagram-native), TikTok second (growing fast for indie/alt), YouTube Shorts third.',
+    postTime: 'Wednesday and Saturday 7–10pm EST.',
+    contentStyle: 'Atmosphere and artistry over trends. Content that works: live performance clips that show musicianship, aesthetic visual clips that match the sonic world of the song, studio footage showing the creative process, lyrics-first content for lyrically dense tracks. Alternative audiences reward authenticity and depth — they are allergic to content that feels like marketing.',
+    audienceNote: 'Alternative listeners are heavy Spotify users and playlist-seekers. A strong short-form presence drives playlist pitching leverage — curators check social proof.',
   },
 };
 
@@ -212,12 +228,13 @@ AUDIO ANALYSIS FLAGS (use these to make this strategy different from every other
 - ${bpmNote}
 - ${inspirationNote}
 
-GENRE BASELINE FOR ${genre.toUpperCase()} (starting point — override where the audio flags above suggest it):
-- Platform priority: ${gp.platforms}
-- Optimal post window: ${gp.postTime}
-- Default content style: ${gp.contentStyle}
+GENRE INTELLIGENCE FOR ${genre.toUpperCase()}:
+Platform strategy: ${gp.platforms}
+Post timing: ${gp.postTime}
+What content actually works for this genre: ${gp.contentStyle}
+${gp.audienceNote ? 'Audience behaviour: ' + gp.audienceNote : ''}
 
-YOUR JOB: Use the AUDIO ANALYSIS FLAGS above to write a strategy that is specific to THIS track, not just the genre. Two ${genre} songs with different energy, tempo, and tone should get meaningfully different advice. If a flag contradicts the genre default, follow the flag. Be direct about weaknesses.
+YOUR JOB: Use the AUDIO ANALYSIS FLAGS and the genre intelligence together to write a strategy specific to THIS track. Two ${genre} songs with different energy, tempo, tone, or mood must get meaningfully different content advice — the genre intelligence is the foundation, the audio flags are the differentiators. If a flag contradicts the genre baseline, follow the flag. Be direct about weaknesses — do not soften them.
 
 BANNED PHRASES — do not use: "leverage", "engage with your audience", "build anticipation", "authentic connection", "captivate", "resonate", "share your journey", "connect with fans", "drive engagement", "behind the scenes content", "make sure to".
 
