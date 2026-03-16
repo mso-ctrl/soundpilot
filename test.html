@@ -416,7 +416,66 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
-  </style>
+  
+/* ── Audio playback ──────────────────────────── */
+.vote-card-audio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+
+.play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 99px;
+  border: 1px solid var(--accent, #a78bfa);
+  background: transparent;
+  color: var(--accent, #a78bfa);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.play-btn:hover {
+  background: var(--accent, #a78bfa);
+  color: #fff;
+}
+
+.vote-card--selected .play-btn {
+  border-color: var(--accent, #a78bfa);
+}
+
+.audio-bar-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.audio-progress-bar {
+  height: 4px;
+  background: var(--border, rgba(255,255,255,0.1));
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.audio-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent, #a78bfa);
+  border-radius: 99px;
+  transition: width 0.1s linear;
+}
+
+.hidden { display: none !important; }
+</style>
 </head>
 <body>
   <div class="page">
@@ -744,13 +803,24 @@ function showVoteUI(data) {
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
     card.setAttribute('aria-label', `Hook ${String.fromCharCode(65 + i)}: ${hook.line}`);
+    const clipUrl = `${API_BASE}/api/test/${sessionId}/clip/${i}`;
     card.innerHTML = `
       <div class="vote-card-header">
         <span class="vote-card-label">Hook ${String.fromCharCode(65 + i)}</span>
         <span class="vote-card-window">${hook.window || ''}</span>
       </div>
       <div class="vote-card-line">"${hook.line}"</div>
-      ${hook.reason ? `<div class="vote-card-reason">${hook.reason}</div>` : ''}
+      <div class="vote-card-audio">
+        <button class="play-btn" data-hook="${i}" aria-label="Play Hook ${String.fromCharCode(65 + i)}">
+          <svg class="icon-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg>
+          <svg class="icon-pause hidden" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          <span class="play-label">Listen</span>
+        </button>
+        <div class="audio-bar-wrap hidden">
+          <div class="audio-progress-bar"><div class="audio-progress-fill" data-hook="${i}"></div></div>
+        </div>
+      </div>
+      <audio data-hook="${i}" src="${clipUrl}" preload="none"></audio>
     `;
 
     card.addEventListener('click', () => selectHook(i));
@@ -762,6 +832,68 @@ function showVoteUI(data) {
     });
 
     $voteCards.appendChild(card);
+  });
+
+  // Wire up audio playback
+  let currentAudio = null;
+  let currentPlayBtn = null;
+
+  $voteCards.addEventListener('click', (e) => {
+    const btn = e.target.closest('.play-btn');
+    if (!btn) return;
+    e.stopPropagation(); // don't trigger card selection
+
+    const hookIdx = btn.dataset.hook;
+    const audio = $voteCards.querySelector(`audio[data-hook="${hookIdx}"]`);
+    const barWrap = btn.closest('.vote-card-audio').querySelector('.audio-bar-wrap');
+    const fill = $voteCards.querySelector(`.audio-progress-fill[data-hook="${hookIdx}"]`);
+    const label = btn.querySelector('.play-label');
+    const iconPlay = btn.querySelector('.icon-play');
+    const iconPause = btn.querySelector('.icon-pause');
+
+    if (!audio) return;
+
+    // Stop any other playing audio
+    if (currentAudio && currentAudio !== audio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      if (currentPlayBtn) {
+        currentPlayBtn.querySelector('.icon-play')?.classList.remove('hidden');
+        currentPlayBtn.querySelector('.icon-pause')?.classList.add('hidden');
+        currentPlayBtn.querySelector('.play-label').textContent = 'Listen';
+        currentPlayBtn.closest('.vote-card-audio').querySelector('.audio-bar-wrap')?.classList.add('hidden');
+      }
+    }
+
+    if (audio.paused) {
+      audio.play().then(() => {
+        currentAudio = audio;
+        currentPlayBtn = btn;
+        iconPlay.classList.add('hidden');
+        iconPause.classList.remove('hidden');
+        label.textContent = 'Playing';
+        barWrap.classList.remove('hidden');
+      }).catch(() => {});
+    } else {
+      audio.pause();
+      iconPlay.classList.remove('hidden');
+      iconPause.classList.add('hidden');
+      label.textContent = 'Listen';
+    }
+
+    // Progress
+    audio.addEventListener('timeupdate', () => {
+      if (audio.duration && fill) {
+        fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+      }
+    }, { passive: true });
+
+    audio.addEventListener('ended', () => {
+      iconPlay.classList.remove('hidden');
+      iconPause.classList.add('hidden');
+      label.textContent = 'Listen';
+      if (fill) fill.style.width = '0%';
+    }, { once: true });
   });
 }
 

@@ -7,6 +7,9 @@ const OpenAI    = require('openai');
 const path      = require('path');
 const https     = require('https');
 const crypto    = require('crypto');
+const ffmpeg    = require('fluent-ffmpeg');
+const os        = require('os');
+const fsp       = require('fs').promises;
 const Database  = require('better-sqlite3');
 const fs        = require('fs');
 
@@ -39,6 +42,14 @@ db.exec(`
   );
 
   CREATE UNIQUE INDEX IF NOT EXISTS uq_voter ON votes(session_id, voter_fp);
+
+  CREATE TABLE IF NOT EXISTS audio_clips (
+    session_id  TEXT NOT NULL REFERENCES test_sessions(id),
+    hook_index  INTEGER NOT NULL,
+    audio_data  BLOB NOT NULL,
+    mime_type   TEXT NOT NULL DEFAULT 'audio/mpeg',
+    PRIMARY KEY (session_id, hook_index)
+  );
 `);
 
 // Cleanup expired sessions older than 7 days
@@ -101,6 +112,45 @@ const upload = multer({
     }
   }
 });
+
+
+// ── Cut hook audio clip ───────────────────────────
+// Returns a Buffer of the clipped audio or null on failure
+function cutHookClip(inputBuffer, mimeType, startSec, endSec) {
+  return new Promise((resolve) => {
+    const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('m4a') || mimeType.includes('mp4') ? 'm4a' : 'mp3';
+    const inputPath  = require('path').join(os.tmpdir(), `sp_in_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
+    const outputPath = require('path').join(os.tmpdir(), `sp_clip_${Date.now()}_${Math.random().toString(36).slice(2)}.mp3`);
+    const duration = Math.min(endSec - startSec, 30); // cap at 30s
+
+    fsp.writeFile(inputPath, inputBuffer)
+      .then(() => {
+        ffmpeg(inputPath)
+          .setStartTime(Math.max(0, startSec - 1))  // 1s before for context
+          .duration(duration + 1)
+          .audioCodec('libmp3lame')
+          .audioBitrate(128)
+          .audioChannels(2)
+          .audioFrequency(44100)
+          .output(outputPath)
+          .on('end', () => {
+            Promise.all([
+              fsp.readFile(outputPath),
+              fsp.unlink(inputPath).catch(() => {}),
+              fsp.unlink(outputPath).catch(() => {}),
+            ]).then(([buf]) => resolve(buf)).catch(() => resolve(null));
+          })
+          .on('error', (err) => {
+            console.error('ffmpeg clip error:', err.message);
+            fsp.unlink(inputPath).catch(() => {});
+            fsp.unlink(outputPath).catch(() => {});
+            resolve(null);
+          })
+          .run();
+      })
+      .catch(() => resolve(null));
+  });
+}
 
 // ── Perplexity live trend search ──────────────────
 async function fetchLiveTrends(genre) {
@@ -472,6 +522,18 @@ Be direct. Quote the lyrics. No padding.`;
       max_tokens: 2200,
     });
 
+    // ── Cut audio clips for hook voting ──────────────
+    const clipResults = [];
+    if (hooks.length >= 2) {
+      const clipPromises = hooks.map((hook, i) =>
+        cutHookClip(req.file.buffer, req.file.mimetype || 'audio/mpeg', hook.startSec, hook.endSec)
+          .then(buf => ({ i, buf }))
+          .catch(() => ({ i, buf: null }))
+      );
+      const clips = await Promise.all(clipPromises);
+      clips.forEach(({ i, buf }) => { if (buf) clipResults.push({ i, buf }); });
+    }
+
     // ── Create a test session for Hook A/B/C voting ──
     let testSession = null;
     if (hooks.length >= 2) {
@@ -485,6 +547,15 @@ Be direct. Quote the lyrics. No padding.`;
         INSERT INTO test_sessions (id, artist_key, genre, hooks, created_at, expires_at, track_name)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(sessionId, artistKey, genre, JSON.stringify(hooks), now, expiresAt, trackName);
+
+      // Store clips
+      if (clipResults.length > 0) {
+        const insertClip = db.prepare('INSERT OR REPLACE INTO audio_clips (session_id, hook_index, audio_data, mime_type) VALUES (?, ?, ?, ?)');
+        for (const { i, buf } of clipResults) {
+          try { insertClip.run(sessionId, i, buf, 'audio/mpeg'); } catch {}
+        }
+      }
+      const hasClips = clipResults.length > 0;
 
       testSession = {
         testUrl:    `/test/${sessionId}`,
@@ -579,6 +650,26 @@ app.post('/api/test/:id/vote', voteLimit, (req, res) => {
   const totalVotes = counts.reduce((a, r) => a + r.cnt, 0);
 
   res.json({ success: true, voteCounts, totalVotes, yourVote: hookIndex });
+});
+
+
+// ── GET /api/test/:id/clip/:hookIndex — serve audio clip ──
+app.get('/api/test/:id/clip/:hookIndex', (req, res) => {
+  const session = db.prepare('SELECT expires_at FROM test_sessions WHERE id = ?').get(req.params.id);
+  if (!session) return res.status(404).end();
+  if (Date.now() > session.expires_at) return res.status(410).end();
+
+  const idx = parseInt(req.params.hookIndex, 10);
+  if (isNaN(idx) || idx < 0 || idx > 2) return res.status(400).end();
+
+  const clip = db.prepare('SELECT audio_data, mime_type FROM audio_clips WHERE session_id = ? AND hook_index = ?').get(req.params.id, idx);
+  if (!clip) return res.status(404).end();
+
+  res.setHeader('Content-Type', clip.mime_type || 'audio/mpeg');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Content-Length', clip.audio_data.length);
+  res.end(clip.audio_data);
 });
 
 // ── GET /api/results/:id — artist-only results ──
