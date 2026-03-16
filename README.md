@@ -2,29 +2,43 @@
 
 > AI label infrastructure for independent artists.
 
-**Launch songs with data, not guesswork.**
+**Label-level strategy. Artist-level control.**
 
-SoundPilot analyzes your unreleased music and generates a full viral rollout strategy — comparable artists, TikTok content plan, and a 3-week release calendar.
+SoundPilot is an AI-assisted release strategy platform for independent artists. Upload an unreleased snippet and get a full viral rollout strategy — the kind major labels provide but indie artists rarely access.
 
-## How it works
+## Core Features
 
-1. Upload an unreleased snippet (MP3/WAV/M4A)
-2. Select your genre
-3. Add artist inspirations (optional)
-4. Paste your OpenAI API key
-5. Hit Generate Strategy
+- **HookFinder™** — Identifies the strongest moment in your track (highest replay potential, short-form compatibility)
+- **Content Strategy** — Platform-specific formats tailored to your sound
+- **14-Day Rollout** — Day-by-day release calendar
+- **Signal Metrics** — Hook Strength, Content Potential, Replay Score
+- **Collaborator Network** — AI-matched A&Rs, curators, creators (coming soon)
 
-## Tech
+## How to use
 
-- Vanilla HTML/CSS/JS — no framework needed
-- [Meyda](https://meyda.sound.app/) for real browser-side audio feature extraction (BPM, energy, tone, mood)
-- OpenAI GPT-4o for strategy generation
-- Your API key runs directly from your browser — never stored or sent to any server
+1. Upload unreleased snippet (MP3/WAV/M4A, 10–60s)
+2. Select genre, add mood and inspirations
+3. Add your [OpenAI API key](https://platform.openai.com/api-keys) — runs entirely in browser, never stored
+4. Generate strategy
+
+Requires OpenAI API credits ($5 covers hundreds of analyses).
+
+## Stack
+
+- Vanilla HTML/CSS/JS — zero framework, fast, portable
+- [Meyda](https://meyda.sound.app/) — client-side audio feature extraction
+- OpenAI GPT-4o — strategy generation
+- GitHub Pages — hosting
+
+## Philosophy
+
+> AI does the analysis. You make the calls.
+
+SoundPilot is designed around three roles:
+- **AI** — audio analysis & pattern recognition
+- **Artist** — creative control & final decisions  
+- **Humans** — collaboration & expertise the AI can't replicate
 
 ## Local development
 
-Just open `index.html` in a browser. No build step required.
-
-## Deploy
-
-Works on GitHub Pages, Vercel, Netlify, or any static host.
+Open `index.html` in any browser. No build step required.
