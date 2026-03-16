@@ -12,12 +12,18 @@ const port = process.env.PORT || 3001;
 // ── OpenAI client ──────────────────────────────────
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ── Middleware ─────────────────────────────────────
-app.use(cors({
-  origin: true, // allow all origins
-  methods: ['GET', 'POST'],
-  credentials: true,
-}));
+// ── CORS — allow all origins (manual headers + cors package) ───
+// Manual headers first — belt-and-suspenders approach
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+app.use(cors({ origin: true, methods: ['GET', 'POST'], credentials: false }));
 app.use(express.json());
 
 // Serve frontend static files (for Railway one-repo deploy)
