@@ -62,6 +62,13 @@
     document.querySelector('[data-theme-toggle]').addEventListener('click', () => setTimeout(draw, 50));
 })();
 
+// ── Config ────────────────────────────────────────
+// In production this points to your Railway server.
+// In local dev, change to 'http://localhost:3001'
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:3001'
+  : ''; // same origin when deployed on Railway
+
 // ── State ──────────────────────────────────────────
 let audioFile = null;
 let audioFeatures = null;
@@ -76,8 +83,6 @@ const waveCanvas = document.getElementById('waveCanvas');
 const genreEl   = document.getElementById('genreEl');
 const moodEl    = document.getElementById('moodEl');
 const inspsEl   = document.getElementById('inspsEl');
-const apiEl     = document.getElementById('apiEl');
-const keyEye    = document.getElementById('keyEye');
 const genBtn    = document.getElementById('genBtn');
 const genLabel  = document.getElementById('genLabel');
 const genArrow  = document.getElementById('genArrow');
@@ -299,29 +304,18 @@ function inferMood(sc, rms, zcr) {
   return 'Melodic';
 }
 
-// ── API key toggle ─────────────────────────────────
-keyEye.addEventListener('click', () => {
-  const show = apiEl.type === 'password';
-  apiEl.type = show ? 'text' : 'password';
-  keyEye.innerHTML = show
-    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
-    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
-});
-
 // ── Ready check ────────────────────────────────────
 function checkReady() {
-  genBtn.disabled = !(audioFile && genreEl.value && apiEl.value.trim().startsWith('sk-'));
+  genBtn.disabled = !(audioFile && genreEl.value);
 }
 genreEl.addEventListener('change', checkReady);
-apiEl.addEventListener('input', checkReady);
 
 // ── Generate ───────────────────────────────────────
 genBtn.addEventListener('click', async () => {
-  const apiKey = apiEl.value.trim();
-  const genre  = genreEl.value;
-  const mood   = moodEl.value.trim();
-  const insps  = inspsEl.value.trim();
-  if (!audioFile || !genre || !apiKey) return;
+  const genre = genreEl.value;
+  const mood  = moodEl.value.trim();
+  const insps = inspsEl.value.trim();
+  if (!audioFile || !genre) return;
 
   if (!audioFeatures) await sleep(1200);
   const features = audioFeatures || defaultFeatures(null);
@@ -337,7 +331,7 @@ genBtn.addEventListener('click', async () => {
     await step('p1', 900);
     await step('p2', 1200);
     await setActive('p3');
-    const strategy = await callOpenAI(apiKey, genre, mood, insps, features);
+    const strategy = await callBackend(genre, mood, insps, features);
     setDone('p3');
     await step('p4', 500);
 
@@ -373,81 +367,28 @@ function resetGenBtn() {
   if (sp) sp.outerHTML = '<svg id="genArrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
 }
 
-// ── OpenAI ─────────────────────────────────────────
-async function callOpenAI(apiKey, genre, mood, inspirations, features) {
-  const bpmStr  = features.bpm && features.bpm !== '—' ? `${features.bpm} BPM` : 'BPM not detected';
-  const hookStr = `${features.hookStart} – ${features.hookEnd}`;
+// ── Backend call ───────────────────────────────────
+async function callBackend(genre, mood, inspirations, features) {
+  const formData = new FormData();
+  formData.append('audio', audioFile);
+  formData.append('genre', genre);
+  formData.append('mood', mood || '');
+  formData.append('inspirations', inspirations || '');
+  formData.append('audioData', JSON.stringify(features));
 
-  const prompt = `You are SoundPilot — an expert music strategist and A&R consultant for independent artists. You specialize in viral release strategy for short-form content platforms in 2025-2026.
-
-An artist has uploaded an unreleased track with the following profile:
-- Genre: ${genre}
-- Mood/theme: ${mood || 'Not specified'}
-- Artist inspirations: ${inspirations || 'Not specified'}
-- Tempo: ${bpmStr}
-- Energy: ${features.energy}
-- Tone: ${features.tone}
-- Song mood: ${features.mood}
-- HookFinder identified strongest moment: ${hookStr} (Hook Strength: ${features.hookStrength}/10)
-
-Generate a strategic release plan with EXACTLY these four sections. Be specific, culturally informed, and avoid generic advice. Write as an expert who deeply understands music culture.
-
----
-
-## Song Identity
-
-In 2–3 vivid sentences: describe the song's emotional core, sonic identity, and the listener it speaks to. Be specific about the vibe — not generic.
-
----
-
-## Comparable Artists
-
-List exactly 5 comparable artists as a numbered list. Format: **Artist Name** — one sentence explaining the sonic or cultural connection (not just the genre).
-
----
-
-## Content Strategy
-
-**Hook moment to use:** Reference the ${hookStr} timestamp and explain exactly why this moment works for short-form content.
-
-**3 content formats** (numbered list): Specific, visual video concepts that match this song's energy. Name each format and describe it in one sentence.
-
-**Best platforms:** Rank TikTok, Instagram Reels, YouTube Shorts in order of priority for this specific track and explain why.
-
-**Optimal posting:** Specific day(s) and time window. Give a real recommendation.
-
----
-
-## 14-Day Release Rollout
-
-Format as Day 1, Day 4, Day 7, Day 10, Day 14. Give each day a bold title and 1–2 specific actions. Think like a label marketing team executing a real campaign.
-
----
-
-Keep it tight, expert, and actionable. This artist is counting on you.`;
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(`${API_BASE}/api/analyze`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.75,
-      max_tokens: 1600
-    })
+    body: formData,
   });
 
+  const data = await res.json().catch(() => ({}));
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    const msg = err.error?.message || '';
-    if (msg.includes('quota') || msg.includes('billing') || res.status === 429) {
-      throw new Error('Your OpenAI account has no credits. Add billing at platform.openai.com/settings/billing');
-    }
-    throw new Error(msg || `OpenAI error ${res.status}`);
+    if (res.status === 429) throw new Error('Too many requests. Try again in an hour.');
+    throw new Error(data.error || `Server error ${res.status}`);
   }
 
-  const data = await res.json();
-  return data.choices[0].message.content;
+  return data.strategy;
 }
 
 // ── Render results ─────────────────────────────────
@@ -550,6 +491,7 @@ resetBtn.addEventListener('click', () => {
   genBtn.disabled = true;
   resetGenBtn();
   errMsg.classList.add('hidden');
+  errMsg.textContent = '';
   progWrap.classList.add('hidden');
   ['p1','p2','p3','p4'].forEach(id => {
     const el = document.getElementById(id);

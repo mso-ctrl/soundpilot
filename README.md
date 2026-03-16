@@ -4,41 +4,48 @@
 
 **Label-level strategy. Artist-level control.**
 
-SoundPilot is an AI-assisted release strategy platform for independent artists. Upload an unreleased snippet and get a full viral rollout strategy — the kind major labels provide but indie artists rarely access.
+## Deploy on Railway (5 minutes, free)
 
-## Core Features
+1. Fork this repo
+2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
+3. Select your forked `soundpilot` repo
+4. Add environment variable: `OPENAI_API_KEY` = your key
+5. Done — Railway gives you a public URL
 
-- **HookFinder™** — Identifies the strongest moment in your track (highest replay potential, short-form compatibility)
-- **Content Strategy** — Platform-specific formats tailored to your sound
-- **14-Day Rollout** — Day-by-day release calendar
-- **Signal Metrics** — Hook Strength, Content Potential, Replay Score
-- **Collaborator Network** — AI-matched A&Rs, curators, creators (coming soon)
-
-## How to use
-
-1. Upload unreleased snippet (MP3/WAV/M4A, 10–60s)
-2. Select genre, add mood and inspirations
-3. Add your [OpenAI API key](https://platform.openai.com/api-keys) — runs entirely in browser, never stored
-4. Generate strategy
-
-Requires OpenAI API credits ($5 covers hundreds of analyses).
-
-## Stack
-
-- Vanilla HTML/CSS/JS — zero framework, fast, portable
-- [Meyda](https://meyda.sound.app/) — client-side audio feature extraction
-- OpenAI GPT-4o — strategy generation
-- GitHub Pages — hosting
-
-## Philosophy
-
-> AI does the analysis. You make the calls.
-
-SoundPilot is designed around three roles:
-- **AI** — audio analysis & pattern recognition
-- **Artist** — creative control & final decisions  
-- **Humans** — collaboration & expertise the AI can't replicate
+Users never see your API key. It lives on the server.
 
 ## Local development
 
-Open `index.html` in any browser. No build step required.
+```bash
+cd server
+npm install
+cp .env.example .env
+# Add your OPENAI_API_KEY to .env
+npm run dev
+```
+
+Then open `index.html` in a browser (or serve with `npx serve .` from root).
+
+## Architecture
+
+```
+soundpilot/
+├── index.html        # Frontend
+├── style.css         # Styles
+├── app.js            # Frontend JS (audio analysis via Meyda, calls backend)
+├── server/
+│   ├── index.js      # Express server — OpenAI proxy, rate limiting
+│   ├── package.json
+│   └── .env.example  # Copy to .env with your OpenAI key
+└── railway.json      # Railway deploy config
+```
+
+**Rate limits:** 10 strategy generations per IP per hour (configurable in `server/index.js`).
+
+## Stack
+
+- Vanilla HTML/CSS/JS frontend
+- [Meyda](https://meyda.sound.app/) — client-side audio analysis
+- Node.js + Express backend
+- OpenAI GPT-4o
+- Railway for hosting
