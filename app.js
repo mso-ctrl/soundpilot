@@ -340,33 +340,25 @@ genBtn.addEventListener('click', async () => {
   const insps = inspsEl.value.trim();
   if (!audioFile || !genre) return;
 
-  // Disable button immediately, show extraction status
+  // Disable button and start UI immediately — don't wait for Meyda extraction
+  // Whisper on the backend handles all the real analysis
   genBtn.disabled = true;
-  genLabel.textContent = 'Reading audio...';
-  genArrow && (genArrow.outerHTML = '<div class="spinner"></div>');
-  errMsg.classList.add('hidden');
-
-  // Wait up to 20s for audio extraction to finish (full songs take time)
-  if (!audioFeatures) {
-    let waited = 0;
-    while (!audioFeatures && waited < 20000) {
-      await sleep(300);
-      waited += 300;
-    }
-  }
-  const features = audioFeatures || defaultFeatures(null);
-
-  // Now start the actual analysis UI
   genLabel.textContent = 'Analyzing...';
+  const arrowEl = document.getElementById('genArrow');
+  if (arrowEl) arrowEl.outerHTML = '<div class="spinner"></div>';
+  errMsg.classList.add('hidden');
   progWrap.classList.remove('hidden');
 
+  // Use whatever features Meyda has extracted so far (may still be null — that's fine)
+  const features = audioFeatures || defaultFeatures(null);
+
   try {
-    await step('p1', 900);
-    await step('p2', 1200);
-    await setActive('p3');
+    setActive('p1'); await sleep(400); setDone('p1');
+    setActive('p2'); // stays active while Whisper transcribes
     const data = await callBackend(genre, mood, insps, features);
-    setDone('p3');
-    await step('p4', 500);
+    setDone('p2');
+    await step('p3', 600);
+    await step('p4', 400);
 
     progWrap.classList.add('hidden');
     showResults(features, data);
@@ -374,7 +366,7 @@ genBtn.addEventListener('click', async () => {
     progWrap.classList.add('hidden');
     resetGenBtn();
     genBtn.disabled = false;
-    errMsg.textContent = err.message || 'Something went wrong. Check your API key and billing.';
+    errMsg.textContent = err.message || 'Something went wrong. Please try again.';
     errMsg.classList.remove('hidden');
   }
 });
