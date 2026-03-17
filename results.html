@@ -679,8 +679,8 @@ async function loadResults(isRefresh) {
   }
 
   try {
-    const url = new URL(`${API_BASE}/api/test/${sessionId}/results`);
-    if (artistKey) url.searchParams.set('artistKey', artistKey);
+    const url = new URL(`${API_BASE}/api/results/${sessionId}`);
+    if (artistKey) url.searchParams.set('key', artistKey);
 
     const res = await fetch(url.toString());
 
