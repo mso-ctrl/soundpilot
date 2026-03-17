@@ -690,20 +690,24 @@ function showHookTestPanel(testSession) {
   htpLink.textContent = testUrl;
   htpResultsLink.href = resultsUrl;
 
-  htpCopy.addEventListener('click', () => {
+  // Clone to remove any previously stacked listeners
+  const freshCopy = htpCopy.cloneNode(true);
+  htpCopy.parentNode.replaceChild(freshCopy, htpCopy);
+  const copyLabel = freshCopy.querySelector('#htpCopyLabel') || freshCopy.querySelector('span');
+
+  freshCopy.addEventListener('click', () => {
     navigator.clipboard.writeText(testUrl).then(() => {
-      htpCopyLabel.textContent = 'Copied!';
-      setTimeout(() => { htpCopyLabel.textContent = 'Copy link'; }, 2000);
+      if (copyLabel) copyLabel.textContent = 'Copied!';
+      setTimeout(() => { if (copyLabel) copyLabel.textContent = 'Copy link'; }, 2000);
     }).catch(() => {
-      // fallback
       const el = document.createElement('textarea');
       el.value = testUrl;
       document.body.appendChild(el);
       el.select();
       document.execCommand('copy');
       document.body.removeChild(el);
-      htpCopyLabel.textContent = 'Copied!';
-      setTimeout(() => { htpCopyLabel.textContent = 'Copy link'; }, 2000);
+      if (copyLabel) copyLabel.textContent = 'Copied!';
+      setTimeout(() => { if (copyLabel) copyLabel.textContent = 'Copy link'; }, 2000);
     });
   });
 
