@@ -10,11 +10,22 @@ const crypto    = require('crypto');
 const ffmpeg    = require('fluent-ffmpeg');
 const os        = require('os');
 const fsp       = require('fs').promises;
+
+// Set ffmpeg path explicitly if provided, otherwise let fluent-ffmpeg find it
+const FFMPEG_PATH = process.env.FFMPEG_PATH || '/usr/bin/ffmpeg';
+try {
+  if (require('fs').existsSync(FFMPEG_PATH)) {
+    ffmpeg.setFfmpegPath(FFMPEG_PATH);
+  }
+} catch {}
 const Database  = require('better-sqlite3');
 const fs        = require('fs');
 
 const app  = express();
 const port = process.env.PORT || 3001;
+
+// Railway sits behind a proxy — trust it so rate-limit + IP fingerprint work correctly
+app.set('trust proxy', 1);
 
 // ── Database setup ────────────────────────────────
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'soundpilot.db');
